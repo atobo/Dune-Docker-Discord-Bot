@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Android app (separate project, not part of this repo)
+dune-android-app/
+
 # Environment / Secrets — NEVER commit this!
 .env
 
