@@ -176,6 +176,36 @@ It features interactive **autocomplete** to assist you:
 /giveitem player: <Select Player> item: <Select Item> [quantity: 50]
 ```
 
+### Checking & Installing Game Server Updates (`/update`)
+
+The `/update` command allows Discord Administrators to check for and install game server updates directly from Discord, without needing SSH access. It uses the `dune` CLI tool on the host server.
+
+> [!NOTE]
+> This command requires `BATTLEGROUP_CMD_PATH` to be set in your `.env` (defaults to `/usr/local/bin/dune`). The bot process must have permission to execute this binary.
+
+#### `/update check`
+Queries the game server for available updates and reports back the current version and whether a newer version is available. This is a **read-only** operation and is safe to run at any time.
+
+```text
+/update check
+```
+
+The bot will respond (privately, visible only to you) with the raw output of `dune update check`, showing the current installed version and any available update. This typically completes within **30 seconds**.
+
+#### `/update install`
+Downloads and installs the latest available game server update. The bot runs `dune update --yes` (auto-confirming the install prompt) and waits up to **5 minutes** for the process to complete.
+
+```text
+/update install
+```
+
+> [!WARNING]
+> Running `/update install` will update and likely **restart the game server**, disconnecting all currently online players. It is strongly recommended to:
+> 1. Use `/update check` first to confirm an update is actually available.
+> 2. Announce to players that a restart is imminent before installing (e.g. using `/cmd announce Server update in 5 minutes — please log out!`).
+
+---
+
 ### General Admin Commands (`/cmd <command_name> <arguments>`)
 All server commands other than `announce` are treated as generic administrative console commands. The bot parses your input at the **first space** to separate the command name from its arguments, and forwards them directly to the Dune server.
 
