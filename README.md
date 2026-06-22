@@ -7,8 +7,9 @@ A Discord bot designed to connect a Discord server with a self-hosted **Dune: Aw
 1. **Server Status (`/status`)**: Live check of the server status and database connectivity.
 2. **Player List (`/players`)**: Lists online players with name, level, and faction directly from the PostgreSQL database (using dynamic table mapping).
 3. **Send Commands (`/cmd <command>`)**: Sends administrative console commands (such as `announce`, `kick`, `kill`, `giveitem`) to the game server via RabbitMQ or docker-exec CLI. Restricted to Discord Administrators.
-4. **Two-Way Chat Relay**: Relays messages written in a specific Discord channel straight to the game server as announcements.
-5. **Real-time Event Alerts**: Automatically tails the server logs to announce player joins, departures, and sandstorms to Discord in real-time.
+4. **Restart Services (`/restart <service>`)**: Restarts individual Dune server service containers (e.g. gateway, director, survival server) directly from Discord. Restricted to Discord Administrators.
+5. **Two-Way Chat Relay**: Relays messages written in a specific Discord channel straight to the game server as announcements.
+6. **Real-time Event Alerts**: Automatically tails the server logs to announce player joins, departures, and sandstorms to Discord in real-time.
 
 ---
 
@@ -176,6 +177,42 @@ It features interactive **autocomplete** to assist you:
 /giveitem player: <Select Player> item: <Select Item> [quantity: 50]
 ```
 
+### Restarting Server Services (`/restart`)
+
+The `/restart` command allows Discord Administrators to restart individual Dune server service containers without needing SSH access. It executes `dune restart <service>` on the host server.
+
+> [!NOTE]
+> This command requires `BATTLEGROUP_CMD_PATH` to be set in your `.env` (defaults to `/usr/local/bin/dune`). The bot process must have permission to execute this binary.
+
+#### Available Services
+
+| Choice in Discord | Service Name | Description |
+|---|---|---|
+| Postgres Database | `postgres` | The PostgreSQL database container |
+| RabbitMQ Admin | `rmq-admin` | The RabbitMQ admin interface |
+| RabbitMQ Game | `rmq-game` | The RabbitMQ game message broker |
+| Text Router | `text-router` | The text routing service |
+| Director | `director` | The Dune director service |
+| Gateway | `gateway` | The Dune server gateway |
+| Survival Server | `survival` | The main survival game server |
+| Overmap Server | `overmap` | The overmap game server |
+
+```text
+/restart service: <Select Service>
+```
+
+*Example:* `/restart service: Gateway`
+
+The bot responds **privately** (visible only to you) with the output of the restart command. A successful restart will show the container ID or a confirmation message. If the container is warming up or the process exits before all status checks complete, the bot will display a `⚠️` warning instead of an error — this is normal for fast-restarting containers.
+
+> [!WARNING]
+> Restarting the **Survival Server** or **Gateway** will disconnect all currently online players. It is strongly recommended to announce the restart to players first using:
+> ```text
+> /cmd command: announce Server Restart | The server will restart in 2 minutes — please log out!
+> ```
+
+---
+
 ### Checking & Installing Game Server Updates (`/update`)
 
 The `/update` command allows Discord Administrators to check for and install game server updates directly from Discord, without needing SSH access. It uses the `dune` CLI tool on the host server.
@@ -203,6 +240,63 @@ Downloads and installs the latest available game server update. The bot runs `du
 > Running `/update install` will update and likely **restart the game server**, disconnecting all currently online players. It is strongly recommended to:
 > 1. Use `/update check` first to confirm an update is actually available.
 > 2. Announce to players that a restart is imminent before installing (e.g. using `/cmd announce Server update in 5 minutes — please log out!`).
+
+---
+
+## Access Control
+
+All sensitive commands are restricted to members with the **Administrator** permission in your Discord server. This is enforced at the Discord API level — the commands will not even appear in the slash command menu for non-administrator users.
+
+| Command | Restricted | Default Visibility |
+|---|---|---|
+| `/status` | No | Everyone |
+| `/players` | No | Everyone |
+| `/cmd` | ✅ Yes | Administrators only |
+| `/giveitem` | ✅ Yes | Administrators only |
+| `/restart` | ✅ Yes | Administrators only |
+| `/update check` | ✅ Yes | Administrators only |
+| `/update install` | ✅ Yes | Administrators only |
+
+### Configuring Per-Command Role Access in Discord
+
+Discord lets you override which roles (or individual members) can use each slash command, entirely through the Discord UI — no code changes required.
+
+#### Steps
+
+1. Open your Discord server and go to **Server Settings** (cog icon next to the server name).
+2. In the left sidebar, click **Integrations**.
+3. Find your bot in the list and click **Manage**.
+4. You will see a list of all registered slash commands. Click on a command (e.g. `/restart`) to open its permission settings.
+5. Under **Roles & Members**, click **Add roles or members**.
+6. Search for and select the role you want to grant access to (e.g. `server-mod`, `server-admin`).
+7. Make sure the toggle next to the role is set to ✅ **Allow**.
+8. Click **Save**.
+
+Repeat for each command you want to share with additional roles.
+
+> [!IMPORTANT]
+> This UI overrides the bot's default visibility, but it does **not** bypass the `Administrator` permission requirement coded into the bot. If a command is set to `Administrator only` in code, the role override in Discord's UI will still let those members **see** the command, and Discord will grant them access to **run** it — this is by design. Discord's integration permissions act as the final authority once you configure them here.
+
+> [!TIP]
+> You can also **restrict** commands that are currently public (like `/status` or `/players`) to specific roles only using the same UI — just add the roles you want to allow and toggle off the `@everyone` default.
+
+#### Suggested Role Mapping
+
+Here is a recommended starting point for a typical two-tier moderation setup:
+
+| Command | `server-admin` | `server-mod` |
+|---|---|---|
+| `/status` | ✅ (already public) | ✅ (already public) |
+| `/players` | ✅ (already public) | ✅ (already public) |
+| `/cmd announce` | ✅ Allow | ✅ Allow |
+| `/cmd kick` / `/cmd kill` | ✅ Allow | ✅ Allow |
+| `/restart` | ✅ Allow | ✅ Allow |
+| `/giveitem` | ✅ Allow | ❌ Deny |
+| `/update check` | ✅ Allow | ✅ Allow |
+| `/update install` | ✅ Allow | ❌ Deny |
+
+> [!NOTE]
+> Discord's integration UI applies permissions at the **command level**, not the subcommand level. This means you cannot grant `/update check` without also technically granting `/update install` through the same UI toggle. If you need subcommand-level restrictions, those would need to be enforced in the bot code itself.
 
 ---
 
