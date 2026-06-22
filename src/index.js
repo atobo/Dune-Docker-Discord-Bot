@@ -1,0 +1,714 @@
+require('dotenv').config();
+const { Client, GatewayIntentBits, EmbedBuilder, ActivityType, MessageFlags } = require('discord.js');
+const database = require('./database');
+const rabbitmq = require('./rabbitmq');
+const LogWatcher = require('./logWatcher');
+const itemsList = require('./items.json');
+const { exec } = require('child_process');
+const http = require('http');
+
+// Initialize Discord Client
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
+});
+
+// Target channel for relays and alerts
+const CHANNEL_ID = process.env.CHANNEL_ID;
+
+// Log Watcher instance
+let logWatcher = null;
+
+client.once('ready', async () => {
+  console.log(`[Discord] Bot is online as ${client.user.tag}!`);
+  
+  // Set custom rich presence activity
+  client.user.setActivity('Arrakis', { type: ActivityType.Watching });
+
+  // Test Database Connection
+  const dbConnected = await database.testConnection();
+  if (dbConnected) {
+    // Start schema discovery
+    await database.discoverSchema();
+  }
+
+  // Test RabbitMQ Connection
+  if (process.env.USE_CLI_FALLBACK !== 'true') {
+    await rabbitmq.testAmqpConnection();
+  } else {
+    console.log('[AMQP] Running in CLI fallback mode, skipping connection check.');
+    await rabbitmq.initCliFallback();
+  }
+
+  // Initialize Log Watcher if log source is provided
+  if (process.env.LOG_CONTAINER_NAME || process.env.LOG_FILE_PATH) {
+    await setupLogWatcher();
+  } else {
+    console.warn('[LogWatcher] Neither LOG_CONTAINER_NAME nor LOG_FILE_PATH is defined in .env. Log tailing disabled.');
+  }
+});
+
+// Set up Log Watcher and configure event handlers
+async function setupLogWatcher() {
+  const logSource = process.env.LOG_CONTAINER_NAME || process.env.LOG_FILE_PATH;
+  const isDocker = !!process.env.LOG_CONTAINER_NAME;
+
+  // Retrieve player account-to-character mapping from the database
+  const characterMap = await database.getFuncomToCharacterMap();
+
+  logWatcher = new LogWatcher(logSource, {
+    isDocker,
+    interval: 1500,
+    characterMap,
+    onChat: (player, message, channel) => {
+      const channelStr = channel ? `[${channel}] ` : '';
+      console.log(`[Relay] Game Chat: ${channelStr}<${player}> ${message}`);
+      relayToDiscord(`${channelStr}<**${player}**> ${message}`, '#E67E22'); // Warm orange for game chat
+    },
+    onJoin: (player) => {
+      console.log(`[Relay] Player Join: ${player}`);
+      const embed = new EmbedBuilder()
+        .setColor('#2ECC71') // Vibrant Green
+        .setDescription(`📥 **${player}** has joined the server.`);
+      sendEmbedToChannel(embed);
+    },
+    onLeave: (player) => {
+      console.log(`[Relay] Player Leave: ${player}`);
+      const embed = new EmbedBuilder()
+        .setColor('#E74C3C') // Vibrant Red
+        .setDescription(`📤 **${player}** has left the server.`);
+      sendEmbedToChannel(embed);
+    },
+    onLine: (line) => {
+      // General logs forwarding can go here if needed
+      if (line.startsWith('⚠️')) {
+        relayToDiscord(line, '#F1C40F'); // Yellow alert
+      }
+    }
+  });
+
+  logWatcher.start();
+}
+
+// Utility to send simple text message to channel
+async function relayToDiscord(content, colorHex = '#3498DB') {
+  if (!CHANNEL_ID) return;
+  try {
+    const channel = await client.channels.fetch(CHANNEL_ID);
+    if (channel) {
+      let cleanContent = content || '';
+      if (cleanContent.length > 4000) {
+        cleanContent = cleanContent.substring(0, 3997) + '...';
+      }
+      const embed = new EmbedBuilder()
+        .setColor(colorHex)
+        .setDescription(cleanContent);
+      await channel.send({ embeds: [embed] });
+    }
+  } catch (error) {
+    console.error('[Discord] Failed to relay message:', error.message);
+  }
+}
+
+// Utility to send Embed to channel
+async function sendEmbedToChannel(embed) {
+  if (!CHANNEL_ID) return;
+  try {
+    const channel = await client.channels.fetch(CHANNEL_ID);
+    if (channel) {
+      await channel.send({ embeds: [embed] });
+    }
+  } catch (error) {
+    console.error('[Discord] Failed to send embed:', error.message);
+  }
+}
+
+// Handler for Discord Slash Commands
+client.on('interactionCreate', async (interaction) => {
+  if (interaction.isAutocomplete()) {
+    const { commandName } = interaction;
+    if (commandName === 'giveitem') {
+      const focusedOption = interaction.options.getFocused(true);
+      const searchVal = focusedOption.value.toLowerCase();
+
+      if (focusedOption.name === 'player') {
+        try {
+          const onlinePlayers = await database.getOnlinePlayers();
+          const allPlayers = await database.getAllPlayers();
+
+          const onlineSet = new Set(onlinePlayers.map(p => p.name.toLowerCase()));
+          const choices = [];
+
+          // 1. Add online players matching search query
+          onlinePlayers.forEach(p => {
+            if (p.name.toLowerCase().includes(searchVal)) {
+              choices.push({ name: `🟢 ${p.name}`, value: p.name });
+            }
+          });
+
+          // 2. Add offline players matching search query
+          allPlayers.forEach(p => {
+            if (!onlineSet.has(p.name.toLowerCase()) && p.name.toLowerCase().includes(searchVal)) {
+              choices.push({ name: `🔴 ${p.name}`, value: p.name });
+            }
+          });
+
+          await interaction.respond(choices.slice(0, 25));
+        } catch (err) {
+          console.error('[Autocomplete] Error suggesting players:', err);
+          await interaction.respond([]);
+        }
+      } 
+      
+      else if (focusedOption.name === 'item') {
+        try {
+          const matches = itemsList
+            .filter(item => 
+              item.name.toLowerCase().includes(searchVal) || 
+              item.id.toLowerCase().includes(searchVal)
+            )
+            .map(item => ({
+              name: `${item.name} (${item.id})`,
+              value: item.id
+            }))
+            .slice(0, 25);
+
+          await interaction.respond(matches);
+        } catch (err) {
+          console.error('[Autocomplete] Error suggesting items:', err);
+          await interaction.respond([]);
+        }
+      }
+    }
+    return;
+  }
+
+  if (!interaction.isChatInputCommand()) return;
+
+  const { commandName } = interaction;
+
+  try {
+    if (commandName === 'status') {
+      await interaction.deferReply();
+      const dbStatus = await database.testConnection();
+      
+      const embed = new EmbedBuilder()
+        .setTitle('🪐 Dune Server Status')
+        .setColor('#E67E22') // Dune orange
+        .setTimestamp()
+        .setFooter({ text: 'Dune Docker Bot' });
+
+      try {
+        const bgStatus = await getBattlegroupStatus();
+        if (bgStatus.success && bgStatus.output) {
+          const parsed = parseStatusOutput(bgStatus.output);
+          
+          if (parsed.info) {
+            // Set custom title if available
+            if (parsed.info.title) {
+              embed.setTitle(`🪐 ${parsed.info.title}`);
+            }
+            
+            const overallLower = parsed.info.overall.toLowerCase();
+            const statusEmoji = (overallLower === 'ready' || overallLower === 'running' || overallLower === 'online') ? '🟢' : '🔴';
+            
+            embed.addFields(
+              { name: 'Server State', value: `${statusEmoji} ${parsed.info.overall}`, inline: true },
+              { name: 'Database Connection', value: dbStatus ? '🟢 Connected' : '🔴 Disconnected', inline: true },
+              { name: 'Population', value: parsed.info.population || '0/60', inline: true }
+            );
+            
+            // Infrastructure Details
+            const dbEmoji = parsed.info.postgres.startsWith('Up') ? '🟢' : '🔴';
+            const gwEmoji = parsed.info.gateway.startsWith('Up') ? '🟢' : '🔴';
+            const dirEmoji = parsed.info.director.startsWith('Up') ? '🟢' : '🔴';
+            
+            embed.addFields(
+              { name: 'Postgres DB', value: `${dbEmoji} ${parsed.info.postgres}`, inline: true },
+              { name: 'Gateway', value: `${gwEmoji} ${parsed.info.gateway}`, inline: true },
+              { name: 'Director', value: `${dirEmoji} ${parsed.info.director}`, inline: true }
+            );
+          } else {
+            console.warn('[Status] parseStatusOutput parsed no info. Raw output was:', JSON.stringify(bgStatus.output));
+            embed.addFields(
+              { name: 'Server State', value: '🟢 Online', inline: true },
+              { name: 'Database Connection', value: dbStatus ? '🟢 Connected' : '🔴 Disconnected', inline: true }
+            );
+          }
+          
+          if (parsed.servers && parsed.servers.length > 0) {
+            let serverList = '';
+            parsed.servers.forEach(srv => {
+              const isReady = srv.state.toLowerCase() === 'ready';
+              const stateEmoji = isReady ? '🟢' : '🟡';
+              const mapName = srv.map.replace('_', ' ');
+              serverList += `${stateEmoji} **${mapName}**: ${srv.state} (${srv.uptime})\n`;
+            });
+            embed.addFields({ name: 'Game Servers', value: serverList });
+          } else {
+            embed.addFields({ name: 'Game Servers', value: '⚠️ No active game server instances found.' });
+          }
+        } else {
+          console.warn('[Status] getBattlegroupStatus failed or returned empty output. Error:', bgStatus.error, 'Output:', JSON.stringify(bgStatus.output));
+          embed.addFields(
+            { name: 'Server State', value: '🟢 Online', inline: true },
+            { name: 'Database Connection', value: dbStatus ? '🟢 Connected' : '🔴 Disconnected', inline: true }
+          );
+        }
+      } catch (err) {
+        console.error('[Status] Unexpected error getting detailed status:', err);
+        embed.addFields(
+          { name: 'Server State', value: '🟢 Online', inline: true },
+          { name: 'Database Connection', value: dbStatus ? '🟢 Connected' : '🔴 Disconnected', inline: true }
+        );
+      }
+
+      await interaction.editReply({ embeds: [embed] });
+    }
+    
+    else if (commandName === 'players') {
+      await interaction.deferReply();
+      const players = await database.getOnlinePlayers();
+      
+      const embed = new EmbedBuilder()
+        .setTitle('👥 Online Players')
+        .setColor('#3498DB')
+        .setTimestamp();
+
+      if (players.length === 0) {
+        embed.setDescription('No players are currently online.');
+      } else {
+        const playerList = players.map(p => `• **${p.name}** (Lvl: ${p.level}) - *${p.faction}*`).join('\n');
+        embed.setDescription(playerList);
+      }
+
+      await interaction.editReply({ embeds: [embed] });
+    }
+
+    else if (commandName === 'cmd') {
+      await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+      const commandString = interaction.options.getString('command');
+
+      // Parse the command and arguments
+      // e.g. announce "hello" -> command: announce, args: "hello"
+      const firstSpace = commandString.indexOf(' ');
+      const cmd = firstSpace !== -1 ? commandString.substring(0, firstSpace) : commandString;
+      const args = firstSpace !== -1 ? commandString.substring(firstSpace + 1) : '';
+
+      if (cmd.toLowerCase() === 'giveitem') {
+        await interaction.editReply({ 
+          content: `❌ Direct console commands for \`giveitem\` do not work on Dune: Awakening servers. Please use the dedicated slash command \`/giveitem\` instead, which updates the player's inventory directly in the database.` 
+        });
+        return;
+      }
+
+       try {
+        await rabbitmq.sendServerCommand(cmd, args);
+        await interaction.editReply({ content: `✅ Command \`${cmd}\` successfully dispatched to Dune server.` });
+      } catch (error) {
+        let responseContent = `❌ Failed to dispatch command: ${error.message}`;
+        if (responseContent.length > 2000) {
+          responseContent = responseContent.substring(0, 1997) + '...';
+        }
+        await interaction.editReply({ content: responseContent });
+      }
+    }
+
+    else if (commandName === 'giveitem') {
+      await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+      const player = interaction.options.getString('player');
+      const item = interaction.options.getString('item');
+      const quantity = interaction.options.getInteger('quantity') || 1;
+
+      try {
+        // 1. Perform online player check
+        const onlinePlayers = await database.getOnlinePlayers();
+        const isOnline = onlinePlayers.some(p => p.name.toLowerCase() === player.toLowerCase());
+
+        if (isOnline) {
+          await interaction.editReply({
+            content: `❌ Player **${player}** is currently online. To prevent character data desync/corruption, the player must log out of the game before you can give them items.`
+          });
+          return;
+        }
+
+        // 2. Perform direct database modification
+        await database.giveItemToPlayer(player, item, quantity);
+
+        // Get friendly item name
+        const itemObj = itemsList.find(i => i.id.toLowerCase() === item.toLowerCase());
+        const itemDisplayName = itemObj ? itemObj.name : item;
+
+        await interaction.editReply({ 
+          content: `✅ Successfully added **${quantity}x ${itemDisplayName}** directly to **${player}**'s inventory in the database. The items will appear in their bag when they log back in.` 
+        });
+      } catch (error) {
+        let responseContent = `❌ Failed to give item: ${error.message}`;
+        if (responseContent.length > 2000) {
+          responseContent = responseContent.substring(0, 1997) + '...';
+        }
+        await interaction.editReply({ content: responseContent });
+      }
+    }
+
+    else if (commandName === 'restart') {
+      await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+      const service = interaction.options.getString('service');
+
+      try {
+        const restartResult = await executeDuneRestart(service);
+        if (restartResult.success) {
+          await interaction.editReply({
+            content: `✅ Successfully requested restart for service **${service}** on the Dune server.\n\`\`\`\n${restartResult.output.trim()}\n\`\`\``
+          });
+        } else {
+          const errorDetails = restartResult.output.trim() || restartResult.error;
+          
+          // Check if output looks like a successful Docker container restart (hex ID or dune container name)
+          const isDockerRestartOutput = /^[0-9a-f]{64}$/m.test(errorDetails) || 
+                                        errorDetails.toLowerCase().includes('dune-') || 
+                                        errorDetails.toLowerCase().includes(service.toLowerCase());
+          
+          if (isDockerRestartOutput) {
+            await interaction.editReply({
+              content: `⚠️ Requested restart for service **${service}** on the Dune server. The container has restarted successfully, but the script exited with status checks still pending/warming up:\n\`\`\`\n${errorDetails}\n\`\`\``
+            });
+          } else {
+            await interaction.editReply({
+              content: `❌ Failed to restart service **${service}**:\n\`\`\`\n${errorDetails}\n\`\`\``
+            });
+          }
+        }
+      } catch (error) {
+        console.error(`[Restart] Error restarting service ${service}:`, error);
+        await interaction.editReply({
+          content: `❌ Unexpected error trying to restart service **${service}**: ${error.message}`
+        });
+      }
+    }
+
+    else if (commandName === 'update') {
+      await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+      const subcommand = interaction.options.getSubcommand();
+
+      try {
+        const updateResult = await executeDuneUpdate(subcommand);
+        if (updateResult.success) {
+          await interaction.editReply({
+            content: `✅ Successfully completed update command (**${subcommand}**):\n\`\`\`\n${updateResult.output.trim()}\n\`\`\``
+          });
+        } else {
+          await interaction.editReply({
+            content: `❌ Failed during update command (**${subcommand}**):\n\`\`\`\n${updateResult.error || updateResult.output.trim()}\n\`\`\``
+          });
+        }
+      } catch (error) {
+        console.error(`[Update] Error running update action ${subcommand}:`, error);
+        await interaction.editReply({
+          content: `❌ Unexpected error trying to run update action **${subcommand}**: ${error.message}`
+        });
+      }
+    }
+  } catch (error) {
+    console.error('[Discord] Error handling command:', error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: 'There was an error executing this command.' });
+    } else {
+      await interaction.reply({ content: 'There was an error executing this command.', ephemeral: true });
+    }
+  }
+});
+
+// Two-way chat relay: Send Discord messages back to the Game Server
+client.on('messageCreate', async (message) => {
+  // Ignore bots and webhooks
+  if (message.author.bot || message.webhookId) return;
+
+  // Only relay messages sent in the configured channel
+  if (message.channelId !== CHANNEL_ID) return;
+
+  try {
+    const authorName = message.member ? message.member.displayName : message.author.username;
+    // Direct chat message format
+    const chatMessage = `[Discord] ${authorName}: ${message.cleanContent}`;
+    
+    await rabbitmq.sendServerCommand('chat', chatMessage);
+    console.log(`[Relay] Discord -> Game (Global): [${authorName}]: ${message.cleanContent}`);
+  } catch (error) {
+    console.error('[Relay] Failed to relay message to game:', error.message);
+  }
+});
+
+// Function to read request body
+function readRequestBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+    req.on('end', () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch (err) {
+        reject(err);
+      }
+    });
+  });
+}
+
+// Function to send JSON response
+function sendJsonResponse(res, statusCode, data) {
+  res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(data));
+}
+
+// Initialize HTTP API Server
+const server = http.createServer(async (req, res) => {
+  // CORS Headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-Token');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  // API Token Validation
+  const clientToken = req.headers['x-api-token'];
+  const serverToken = process.env.API_AUTH_TOKEN;
+  if (!serverToken || clientToken !== serverToken) {
+    sendJsonResponse(res, 401, { success: false, error: 'Unauthorized: Invalid or missing X-API-Token header' });
+    return;
+  }
+
+  const url = req.url;
+  const method = req.method;
+
+  try {
+    if (url === '/api/status' && method === 'GET') {
+      const dbStatus = await database.testConnection();
+      const bgStatus = await getBattlegroupStatus();
+      let parsed = null;
+      if (bgStatus.success && bgStatus.output) {
+        parsed = parseStatusOutput(bgStatus.output);
+      }
+      sendJsonResponse(res, 200, {
+        success: true,
+        dbConnected: dbStatus,
+        status: parsed
+      });
+    } 
+    
+    else if (url === '/api/players' && method === 'GET') {
+      const players = await database.getOnlinePlayers();
+      sendJsonResponse(res, 200, {
+        success: true,
+        players
+      });
+    } 
+    
+    else if (url === '/api/restart' && method === 'POST') {
+      const body = await readRequestBody(req);
+      const service = body.service;
+      if (!service) {
+        sendJsonResponse(res, 400, { success: false, error: 'Missing service name in request body' });
+        return;
+      }
+      
+      const restartResult = await executeDuneRestart(service);
+      const errorDetails = restartResult.output.trim() || restartResult.error || '';
+      const isDockerRestartOutput = /^[0-9a-f]{64}$/m.test(errorDetails) || 
+                                    errorDetails.toLowerCase().includes('dune-') || 
+                                    errorDetails.toLowerCase().includes(service.toLowerCase());
+                                    
+      sendJsonResponse(res, 200, {
+        success: restartResult.success || isDockerRestartOutput,
+        output: restartResult.output,
+        error: restartResult.error,
+        isDockerRestartOutput
+      });
+    } 
+    
+    else if (url === '/api/update' && method === 'POST') {
+      const body = await readRequestBody(req);
+      const action = body.action; // 'check' or 'install'
+      if (!action || (action !== 'check' && action !== 'install')) {
+        sendJsonResponse(res, 400, { success: false, error: 'Invalid or missing action in request body' });
+        return;
+      }
+      
+      const updateResult = await executeDuneUpdate(action);
+      sendJsonResponse(res, 200, {
+        success: updateResult.success,
+        output: updateResult.output,
+        error: updateResult.error
+      });
+    } 
+    
+    else {
+      sendJsonResponse(res, 404, { success: false, error: 'Endpoint not found' });
+    }
+  } catch (error) {
+    console.error('[API] Server Error:', error);
+    sendJsonResponse(res, 500, { success: false, error: error.message });
+  }
+});
+
+const API_PORT = process.env.API_PORT || 3005;
+server.listen(API_PORT, () => {
+  console.log(`[API] Server is listening on port ${API_PORT}`);
+});
+
+// Handle graceful shutdown
+process.on('SIGINT', () => {
+  console.log('[System] Shutting down bot...');
+  if (logWatcher) logWatcher.stop();
+  server.close(() => {
+    console.log('[API] Server stopped.');
+  });
+  client.destroy();
+  process.exit(0);
+});
+
+client.login(process.env.DISCORD_TOKEN);
+
+/**
+ * Executes the battlegroup status command inside the VM host.
+ */
+function getBattlegroupStatus() {
+  return new Promise((resolve) => {
+    const cmdPath = process.env.BATTLEGROUP_CMD_PATH || '/usr/local/bin/dune';
+    exec(`${cmdPath} status 2>&1`, { timeout: 10000 }, (error, stdout, stderr) => {
+      const output = (stdout || '') + (stderr || '');
+      if (error) {
+        resolve({ success: false, error: error.message, output });
+      } else {
+        resolve({ success: true, output });
+      }
+    });
+  });
+}
+
+/**
+ * Parses raw text output from the `dune status` command.
+ */
+function parseStatusOutput(output) {
+  const lines = output.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  
+  const result = {
+    info: {
+      overall: '',
+      title: '',
+      population: '',
+      postgres: 'Offline',
+      gateway: 'Offline',
+      director: 'Offline'
+    },
+    servers: []
+  };
+
+  let currentSection = '';
+
+  for (const line of lines) {
+    // Detect sections
+    if (line.startsWith('===')) {
+      currentSection = line.replace(/===/g, '').trim().toLowerCase();
+      continue;
+    }
+
+    // Parse Dune status section
+    if (currentSection === 'dune status') {
+      if (line.startsWith('Overall:')) {
+        result.info.overall = line.replace('Overall:', '').trim();
+      } else if (line.startsWith('Title:')) {
+        result.info.title = line.replace('Title:', '').trim();
+      } else if (line.startsWith('Population:')) {
+        result.info.population = line.replace('Population:', '').trim();
+      }
+    }
+
+    // Parse Containers section
+    else if (currentSection === 'containers') {
+      if (line.startsWith('SERVICE') || line.startsWith('------')) {
+        continue;
+      }
+      const parts = line.split(/\s+/);
+      if (parts.length >= 2) {
+        const service = parts[0].trim();
+        const status = parts.slice(1).join(' ').trim();
+        if (service === 'dune-postgres') {
+          result.info.postgres = status;
+        } else if (service === 'dune-server-gateway') {
+          result.info.gateway = status;
+        } else if (service === 'dune-director') {
+          result.info.director = status;
+        }
+      }
+    }
+
+    // Parse Game servers section
+    else if (currentSection === 'game servers') {
+      if (line.startsWith('MAP') || line.startsWith('------') || line.toLowerCase().startsWith('note:')) {
+        continue;
+      }
+      const parts = line.split(/\s+/);
+      if (parts.length >= 2) {
+        const map = parts[0].trim();
+        const state = parts[1].trim();
+        const uptime = parts.slice(2).join(' ').trim();
+        result.servers.push({ map, state, uptime });
+      }
+    }
+  }
+
+  // Ensure overall status was parsed, if not return null for info
+  if (!result.info.overall) {
+    result.info = null;
+  }
+
+  return result;
+}
+
+/**
+ * Executes the dune restart command for a specific service.
+ */
+function executeDuneRestart(service) {
+  return new Promise((resolve) => {
+    const cmdPath = process.env.BATTLEGROUP_CMD_PATH || '/usr/local/bin/dune';
+    exec(`${cmdPath} restart ${service} 2>&1`, { timeout: 30000 }, (error, stdout, stderr) => {
+      const output = (stdout || '') + (stderr || '');
+      if (error) {
+        resolve({ success: false, error: error.message, output });
+      } else {
+        resolve({ success: true, output });
+      }
+    });
+  });
+}
+
+/**
+ * Executes the dune update command.
+ */
+function executeDuneUpdate(action) {
+  return new Promise((resolve) => {
+    const cmdPath = process.env.BATTLEGROUP_CMD_PATH || '/usr/local/bin/dune';
+    const subCmd = action === 'install' ? '--yes' : 'check';
+    
+    // Set a long timeout (5 minutes) for installing updates, 30s for checks
+    const timeoutMs = action === 'install' ? 300000 : 30000;
+    
+    exec(`${cmdPath} update ${subCmd} 2>&1`, { timeout: timeoutMs }, (error, stdout, stderr) => {
+      const output = (stdout || '') + (stderr || '');
+      if (error) {
+        resolve({ success: false, error: error.message, output });
+      } else {
+        resolve({ success: true, output });
+      }
+    });
+  });
+}
