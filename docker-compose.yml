@@ -12,3 +12,5 @@ services:
     environment:
       - NODE_ENV=production
       # The bot will read DISCORD_TOKEN and CLIENT_ID from /app/addon-data/config.json if available
+    env_file:
+      - .env
