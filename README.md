@@ -20,12 +20,21 @@ A Discord bot designed to connect a Discord server with a self-hosted **Dune: Aw
 ## Prerequisites
 
 1. **Node.js** (v16.9.0 or higher) installed on the hosting server.
-2. A **Discord Bot** created on the [Discord Developer Portal](https://discord.com/developers/applications):
-   - Under **Bot**, enable the following **Privileged Gateway Intents**:
+2. A **Discord Bot** created on the [Discord Developer Portal](https://discord.com/developers/applications). If you haven't created one before, follow these steps:
+   - **Create the Application**: Go to the portal, click **New Application**, give it a name, and accept the terms.
+   - **Get your Client ID**: On the **General Information** page, copy your **Application ID** (this is your `CLIENT_ID` in the `.env` file).
+   - **Set up the Bot**: Click on the **Bot** tab on the left sidebar.
+   - **Get your Token**: Click **Reset Token**, confirm, and copy the new token immediately (this is your `DISCORD_TOKEN`). Keep it secret!
+   - **Enable Intents**: Scroll down on the Bot page to **Privileged Gateway Intents** and toggle **ON** all three:
      - *Presence Intent*
      - *Server Members Intent*
      - *Message Content Intent*
-   - Invite the bot to your Discord server using the OAuth2 URL generator (select `bot` scope and `applications.commands` scope, and give it appropriate channel permissions).
+   - **Save Changes**: Make sure to click the green **Save Changes** button at the bottom.
+   - **Invite the Bot**:
+     - Go to **OAuth2** -> **URL Generator** on the left sidebar.
+     - Under **Scopes**, check `bot` and `applications.commands`.
+     - Under **Bot Permissions**, check `Administrator` (or explicitly check permissions for reading/sending messages, embedding links, and slash commands).
+     - Copy the **Generated URL** at the bottom of the page, paste it into a new browser tab, and authorize the bot into your server.
 
 ---
 
