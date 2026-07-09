@@ -454,6 +454,136 @@ async function grantBlueprintToPlayer(characterName, blueprint, itemType, custom
   }
 }
 
+async function constructBlueprintAtPlayer(characterName, blueprint) {
+  const schema = process.env.DB_SCHEMA || 'dune';
+  const client = await pool.connect();
+
+  try {
+    // 1. Resolve player pawn ID
+    const charRes = await client.query(`
+      SELECT player_pawn_id AS actor_id, player_controller_id 
+      FROM ${schema}.encrypted_player_state 
+      WHERE LOWER(${schema}.decrypt_user_data(encrypted_character_name)) = LOWER($1)
+    `, [characterName]);
+
+    if (charRes.rows.length === 0) {
+      throw new Error(`Character "${characterName}" not found in database.`);
+    }
+    const actorId = charRes.rows[0].actor_id;
+
+    // 2. Fetch player location and map details
+    const playerActorRes = await client.query(`
+      SELECT transform::text, map, partition_id, dimension_index 
+      FROM ${schema}.actors 
+      WHERE id = $1
+    `, [actorId]);
+
+    if (playerActorRes.rows.length === 0) {
+      throw new Error(`Player actor ID ${actorId} not found in actors table.`);
+    }
+    const { transform, map, partition_id, dimension_index } = playerActorRes.rows[0];
+
+    // Parse player transform
+    const matches = transform.match(/\(([^)]+)\)/g);
+    if (!matches || matches.length < 2) {
+      throw new Error('Invalid transform format in database: ' + transform);
+    }
+    const locParts = matches[0].slice(1, -1).split(',').map(Number);
+    const px = locParts[0];
+    const py = locParts[1];
+    const pz = locParts[2];
+
+    // 3. Find blueprint center
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    let minZ = Infinity, maxZ = -Infinity;
+
+    blueprint.instances.forEach(i => {
+      if (i.x < minX) minX = i.x;
+      if (i.x > maxX) maxX = i.x;
+      if (i.y < minY) minY = i.y;
+      if (i.y > maxY) maxY = i.y;
+      if (i.z < minZ) minZ = i.z;
+      if (i.z > maxZ) maxZ = i.z;
+    });
+
+    const cx = (minX + maxX) / 2 || 0;
+    const cy = (minY + maxY) / 2 || 0;
+    const cz = minZ !== Infinity ? minZ : 0;
+
+    // Start transaction
+    await client.query('BEGIN');
+
+    // 4. Generate new building actor ID
+    const idRes = await client.query(`SELECT nextval('${schema}.actors_id_seq') AS id`);
+    const buildingId = idRes.rows[0].id;
+
+    // 5. Insert Building Actor
+    const buildingClass = '/Game/Dune/Systems/Building/Pieces/BP_DuneBuildingBase.BP_DuneBuildingBase_C';
+    const buildingTransformStr = `((${px.toFixed(4)},${py.toFixed(4)},${pz.toFixed(4)}),(0,0,0,1))`;
+
+    await client.query(`
+      INSERT INTO ${schema}.actors (id, class, map, transform, partition_id, dimension_index, gas_attributes, properties, owner_account_id)
+      VALUES ($1, $2, $3, $4::dune.transform, $5, $6, '{}'::jsonb, '{}'::jsonb, NULL)
+    `, [buildingId, buildingClass, map, buildingTransformStr, partition_id, dimension_index]);
+
+    // 6. Insert Building record
+    await client.query(`
+      INSERT INTO ${schema}.buildings (id) 
+      VALUES ($1)
+    `, [buildingId]);
+
+    // 7. Insert Instances
+    if (blueprint.instances && blueprint.instances.length > 0) {
+      const chunks = [];
+      const chunkSize = 50;
+      for (let i = 0; i < blueprint.instances.length; i += chunkSize) {
+        chunks.push(blueprint.instances.slice(i, i + chunkSize));
+      }
+
+      for (const chunk of chunks) {
+        let valueStrings = [];
+        let params = [buildingId, actorId];
+        let pIndex = 3;
+
+        chunk.forEach((inst, idx) => {
+          const wx = px + (inst.x - cx);
+          const wy = py + (inst.y - cy);
+          const wz = pz + (inst.z - cz);
+
+          const rad = (inst.rotation * Math.PI) / 360;
+          const qz = Math.sin(rad);
+          const qw = Math.cos(rad);
+
+          params.push(inst.instance_id || (idx + 1));
+          params.push(inst.building_type);
+          params.push([wx, wy, wz, 0.0, 0.0, qz, qw]);
+
+          valueStrings.push(`($1, $${pIndex}, $${pIndex+1}, $${pIndex+2}::real[], $2, 0, 100.0, 0.0, 0, 0, 0, 0.0)`);
+          pIndex += 3;
+        });
+
+        const queryText = `
+          INSERT INTO ${schema}.building_instances
+          (building_id, instance_id, building_type, transform, owner_entity_id, building_flags, health, shelter, stabilization_begin_timespan, stabilization_end_timespan, stabilization_state, sand_buildup)
+          VALUES ${valueStrings.join(', ')}
+        `;
+        await client.query(queryText, params);
+      }
+    }
+
+    await client.query('COMMIT');
+    console.log(`[Database] Instantly constructed building ID ${buildingId} at player "${characterName}" location: (${px}, ${py}, ${pz})`);
+    return { success: true, buildingId, x: px, y: py, z: pz };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error(`[Database] Error in constructBlueprintAtPlayer:`, error.message);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   pool,
   testConnection,
@@ -463,5 +593,6 @@ module.exports = {
   getFuncomToCharacterMap,
   giveItemToPlayer,
   getAllCharactersWithPawnIds,
-  grantBlueprintToPlayer
+  grantBlueprintToPlayer,
+  constructBlueprintAtPlayer
 };

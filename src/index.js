@@ -773,6 +773,33 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    else if (url === '/api/blueprint/construct' && method === 'POST') {
+      const body = await readRequestBody(req);
+      const { characterName, blueprint } = body;
+
+      if (!characterName || !blueprint) {
+        sendJsonResponse(res, 400, { success: false, error: 'Missing characterName or blueprint in request body' });
+        return;
+      }
+
+      // Check online status
+      const onlinePlayers = await database.getOnlinePlayers();
+      const isOnline = onlinePlayers.some(p => p.name.toLowerCase() === characterName.toLowerCase());
+      if (isOnline) {
+        sendJsonResponse(res, 400, {
+          success: false,
+          error: `Player ${characterName} is currently online. They must log out before structural pieces can be constructed in-world.`
+        });
+        return;
+      }
+
+      const result = await database.constructBlueprintAtPlayer(characterName, blueprint);
+      sendJsonResponse(res, 200, {
+        success: true,
+        ...result
+      });
+    }
+
     else {
       sendJsonResponse(res, 404, { success: false, error: 'Endpoint not found' });
     }
