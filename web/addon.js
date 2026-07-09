@@ -6,6 +6,19 @@
   const rabbitmqUrlInput = document.getElementById("rabbitmq-url");
   const saveBtn = document.getElementById("save-btn");
   const statusMsg = document.getElementById("status-message");
+  const setupGuideCard = document.getElementById("setup-guide-card");
+  const showGuideBtn = document.getElementById("show-guide-btn");
+  const hideGuideBtn = document.getElementById("hide-guide-btn");
+
+  showGuideBtn.addEventListener("click", () => {
+    setupGuideCard.style.display = "block";
+    showGuideBtn.style.display = "none";
+  });
+  
+  hideGuideBtn.addEventListener("click", () => {
+    setupGuideCard.style.display = "none";
+    showGuideBtn.style.display = "inline-block";
+  });
 
   function showMessage(msg, isError = false) {
     statusMsg.textContent = msg;
@@ -26,6 +39,14 @@
         clientIdInput.value = config.CLIENT_ID || "";
         guildIdInput.value = config.GUILD_ID || "";
         rabbitmqUrlInput.value = config.RABBITMQ_URL || "amqp://guest:guest@rabbitmq:5672";
+        
+        if (!config.DISCORD_TOKEN) {
+          setupGuideCard.style.display = "block";
+        } else {
+          showGuideBtn.style.display = "inline-block";
+        }
+      } else {
+        setupGuideCard.style.display = "block";
       }
     } catch (err) {
       console.error("Failed to load config:", err);

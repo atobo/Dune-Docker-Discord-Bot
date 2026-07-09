@@ -11,6 +11,20 @@
     <h1>Discord Bot Configuration</h1>
     <p>Configure your Discord Bot token here. The backend container will automatically read these values.</p>
 
+    <div id="setup-guide-card" class="guide-card" style="display: none;">
+      <h2>How to setup your Discord Bot</h2>
+      <ol>
+        <li>Go to the <a href="https://discord.com/developers/applications" target="_blank">Discord Developer Portal</a> and click <strong>New Application</strong>.</li>
+        <li>On the <strong>General Information</strong> page, copy your <strong>Application ID</strong> and paste it into the <strong>Client ID</strong> field below.</li>
+        <li>Go to the <strong>Bot</strong> tab, click <strong>Reset Token</strong>, copy the new token, and paste it into the <strong>Discord Token</strong> field below.</li>
+        <li>Scroll down on the Bot page to <strong>Privileged Gateway Intents</strong> and toggle <strong>ON</strong> all three intents (Presence, Server Members, Message Content). Click <strong>Save Changes</strong>.</li>
+        <li>Go to <strong>OAuth2</strong> -> <strong>URL Generator</strong>, select the <code>bot</code> and <code>applications.commands</code> scopes, and select <code>Administrator</code> permission. Open the generated URL to invite the bot to your server!</li>
+      </ol>
+      <button type="button" id="hide-guide-btn" class="btn-secondary">I've done this, hide guide</button>
+    </div>
+
+    <button type="button" id="show-guide-btn" class="btn-text" style="display: none;">Need help setting up your bot?</button>
+
     <form id="config-form">
       <div class="form-group">
         <label for="discord-token">Discord Token (DISCORD_TOKEN)</label>
