@@ -130,28 +130,25 @@ async function sendServerCommand(commandName, commandArgs = '') {
       const senderHexFlsId = "5E121CE000000001";
       const spoofedName = "Discord Bot";
 
-      // Dynamically fetch all active maps where players are currently online
+      // Dynamically fetch all online player queues to bypass chat.map bindings
       const { pool } = require('./database.js');
-      let activeMaps = [{ map: 'HaggaBasin', dimension: 0 }];
+      let targetQueues = [];
       try {
         const schema = process.env.DB_SCHEMA || 'dune';
-        const mapRes = await pool.query(`SELECT DISTINCT map, dimension_index FROM ${schema}.player_state WHERE online_status = 'Online'`);
-        if (mapRes.rows.length > 0) {
-          activeMaps = mapRes.rows.map(r => {
-            const rawMap = String(r.map || "").trim() || 'HaggaBasin';
-            // Redblink's mapping rules
-            const MAP_CHAT_REGIONS = { Survival_1: "HaggaBasin", Overmap: "Overland", DeepDesert_1: "DeepDesert", SH_Arrakeen: "Arrakeen", SH_HarkoVillage: "HarkoVillage" };
-            const chatMap = MAP_CHAT_REGIONS[rawMap] || rawMap.replace(/^SH_/, "");
-            return { map: chatMap, dimension: parseInt(r.dimension_index) || 0 };
-          });
-        }
+        const queueRes = await pool.query(`
+          SELECT DISTINCT ac."user" as hex_fls_id
+          FROM ${schema}.player_state ps
+          JOIN ${schema}.accounts ac ON ps.account_id = ac.id
+          WHERE ps.online_status <> 'Offline' AND length(ac."user") >= 16
+        `);
+        targetQueues = queueRes.rows.map(r => `${r.hex_fls_id}_queue`);
       } catch (err) {
-        console.error('[CLI] Failed to fetch active maps, defaulting to HaggaBasin.0', err);
+        console.error('[CLI] Failed to fetch active player queues', err);
       }
 
-      console.log(`[CLI] Sending map chat to maps: ${JSON.stringify(activeMaps)}`);
+      console.log(`[CLI] Sending map chat to direct queues: ${JSON.stringify(targetQueues)}`);
 
-      for (const target of activeMaps) {
+      for (const queue of targetQueues) {
         const inner = {
           m_Id: msgId,
           m_ChannelType: "Map",
@@ -182,8 +179,8 @@ async function sendServerCommand(commandName, commandArgs = '') {
         };
 
         const payloadString = JSON.stringify(outerPayload);
-        const routingKey = `${target.map}.${target.dimension}`;
-        const exchange = 'chat.map';
+        const routingKey = queue;
+        const exchange = '';
         
         const outerB64 = Buffer.from(payloadString, 'utf8').toString('base64');
         const routingB64 = Buffer.from(routingKey, 'utf8').toString('base64');
