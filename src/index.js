@@ -467,6 +467,17 @@ client.on('interactionCreate', async (interaction) => {
       }
     }
 
+    else if (commandName === 'chat') {
+      await interaction.deferReply();
+      const message = interaction.options.getString('message');
+      try {
+        await rabbitmq.sendServerCommand('chat', message);
+        await interaction.editReply({ content: `✅ Sent chat message to game: "${message}"` });
+      } catch (error) {
+        await interaction.editReply({ content: `❌ Failed to send chat message: ${error.message}` });
+      }
+    }
+
     else if (commandName === 'automessage') {
       const subcommand = interaction.options.getSubcommand();
       if (subcommand === 'add') {

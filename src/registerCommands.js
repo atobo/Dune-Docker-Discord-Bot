@@ -88,6 +88,16 @@ const commands = [
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   new SlashCommandBuilder()
+    .setName('chat')
+    .setDescription('Send a chat message to the game server map chat')
+    .addStringOption(option =>
+      option.setName('message')
+        .setDescription('The chat message to send')
+        .setRequired(true)
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
+  new SlashCommandBuilder()
     .setName('automessage')
     .setDescription('Manage automated server broadcasts')
     .addSubcommand(subcommand =>
