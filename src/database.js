@@ -540,12 +540,14 @@ async function constructBlueprintAtPlayer(characterName, blueprint) {
         chunks.push(blueprint.instances.slice(i, i + chunkSize));
       }
 
+      let globalInstanceId = 1;
+
       for (const chunk of chunks) {
         let valueStrings = [];
         let params = [buildingId];
         let pIndex = 2;
 
-        chunk.forEach((inst, idx) => {
+        chunk.forEach((inst) => {
           const wx = px + (inst.x - cx);
           const wy = py + (inst.y - cy);
           const wz = pz + (inst.z - cz);
@@ -554,7 +556,7 @@ async function constructBlueprintAtPlayer(characterName, blueprint) {
           const qz = Math.sin(rad);
           const qw = Math.cos(rad);
 
-          params.push(inst.instance_id || (idx + 1));
+          params.push(inst.instance_id || globalInstanceId++);
           params.push(inst.building_type);
           params.push([wx, wy, wz, 0.0, 0.0, qz, qw]);
 
