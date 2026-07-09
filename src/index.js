@@ -3,6 +3,17 @@ const fs = require('fs');
 const path = require('path');
 
 // Configuration is now loaded from the database during bot startup.
+// We also keep a fallback to read from the legacy /app/addon-data/config.json if it exists.
+const addonConfigPath = '/app/addon-data/config.json';
+if (fs.existsSync(addonConfigPath)) {
+  try {
+    const addonConfig = JSON.parse(fs.readFileSync(addonConfigPath, 'utf8'));
+    Object.assign(process.env, addonConfig);
+    console.log('[Init] Loaded legacy configuration from RedBlink Addon storage (config.json).');
+  } catch (err) {
+    console.error('[Init] Failed to parse legacy addon config:', err.message);
+  }
+}
 
 const { Client, GatewayIntentBits, EmbedBuilder, ActivityType, MessageFlags } = require('discord.js');
 const database = require('./database');
