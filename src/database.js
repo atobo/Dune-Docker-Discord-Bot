@@ -484,11 +484,11 @@ async function constructBlueprintAtPlayer(characterName, blueprint) {
     const { transform, map, partition_id, dimension_index } = playerActorRes.rows[0];
 
     // Parse player transform
-    const matches = transform.match(/\(([^)]+)\)/g);
-    if (!matches || matches.length < 2) {
-      throw new Error('Invalid transform format in database: ' + transform);
+    const cleanTransform = transform.replace(/[()"']/g, '');
+    const locParts = cleanTransform.split(',').map(Number);
+    if (locParts.length < 3 || locParts.some(isNaN)) {
+      throw new Error('Invalid transform format parsed from database: ' + transform);
     }
-    const locParts = matches[0].slice(1, -1).split(',').map(Number);
     const px = locParts[0];
     const py = locParts[1];
     const pz = locParts[2];
