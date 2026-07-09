@@ -109,23 +109,45 @@ async function sendServerCommand(commandName, commandArgs = '') {
     
     console.log(`[Command] Sending direct chat message: "${message}" to exchange: ${exchange}`);
     if (useCliFallback) {
-      throw new Error("CLI fallback is no longer supported for chat.map, please use AMQP.");
-    } else {
-      const options = {
-        contentType: 'application/json',
-        messageId: msgId,
-        type: 'text_chat',
-        userId: senderFuncomId, // wait, Erlang script used senderB64 which was A5C0DE5E12A00001
-        appId: 'fls_backend',
-        deliveryMode: 2
-      };
-      // Wait, in Erlang it was:
-      // Sender = base64:decode(<<"${senderB64}">>) -> A5C0DE5E12A00001
-      options.userId = 'A5C0DE5E12A00001';
+      // Restore CLI fallback for chat.map with proper headers!
+      const outerB64 = Buffer.from(payloadString, 'utf8').toString('base64');
+      const routingB64 = Buffer.from(routingKey, 'utf8').toString('base64');
+      const exchangeB64 = Buffer.from(exchange, 'utf8').toString('base64');
+      const senderFuncomIdB64 = Buffer.from('A5C0DE5E12A00001', 'utf8').toString('base64'); // Using hex FLS id
+
+      const erlangScript = `
+Outer = base64:decode(<<"${outerB64}">>),
+Routing = base64:decode(<<"${routingB64}">>),
+Sender = base64:decode(<<"${senderFuncomIdB64}">>),
+Exchange = base64:decode(<<"${exchangeB64}">>),
+XName = rabbit_misc:r(<<"/">>, exchange, Exchange),
+X = rabbit_exchange:lookup_or_die(XName),
+MsgId = list_to_binary("web-discord-bot-chat-" ++ integer_to_list(erlang:system_time(millisecond))),
+P = {list_to_atom("P_basic"), <<"application/json">>, undefined, undefined, 2, undefined, undefined, undefined, undefined, MsgId, undefined, <<"text_chat">>, Sender, <<"fls_backend">>, undefined},
+Content = rabbit_basic:build_content(P, Outer),
+{ok, Msg} = rabbit_basic:message(XName, Routing, Content),
+Result = rabbit_queue_type:publish_at_most_once(X, Msg),
+io:format("publish=~p exchange=chat.map routing=~s~n", [Result, Routing]).
+`.trim().replace(/\n/g, ' ');
+
+      const containerName = process.env.RABBITMQ_CONTAINER_NAME || 'dune-rmq-game';
+      const cliCommand = `docker exec -i ${containerName} rabbitmqctl eval '${erlangScript}'`;
       
-      return sendViaAmqp(payloadString, exchange, routingKey, options);
-    }
-  } else {
+      console.log(`[CLI] Executing chat.map fallback command...`);
+      return new Promise((resolve, reject) => {
+        exec(cliCommand, (error, stdout, stderr) => {
+          if (error) {
+            console.error(`[CLI] Direct chat error: ${error.message}`);
+            return reject(error);
+          }
+          console.log(`[CLI] Direct chat success: ${stdout.trim()}`);
+          if (!/publish=ok/.test(stdout)) {
+            return reject(new Error(`RabbitMQ chat publish did not report publish=ok. Output: ${stdout}`));
+          }
+          resolve(stdout.trim());
+        });
+      });
+    } else {
     fields = {
       Command: commandName,
       Args: commandArgs,
