@@ -3,7 +3,7 @@ FROM node:18-alpine
 WORKDIR /usr/src/app
 
 COPY package*.json ./
-RUN npm install --production
+RUN apk add --no-cache docker-cli && npm install --production
 
 COPY src/ ./src/
 

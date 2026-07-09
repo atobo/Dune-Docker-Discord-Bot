@@ -5,7 +5,10 @@ services:
     build: .
     container_name: redblink-discord-bot
     restart: unless-stopped
+    network_mode: "host"
     volumes:
+      # Mount the Docker socket so the bot can stream container logs
+      - /var/run/docker.sock:/var/run/docker.sock
       # Mount the RedBlink addons directory so the bot can read the addon-data
       # Change this path if your RedBlink installation is elsewhere
       - /opt/dune-docker/data/addons/installed/discord-bot:/app/addon-data
