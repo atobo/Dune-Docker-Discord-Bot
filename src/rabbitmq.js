@@ -63,66 +63,68 @@ async function sendServerCommand(commandName, commandArgs = '') {
       }
     };
   } else if (commandName === 'chat') {
-    // Send all variants to discover which one works
-    const variants = [
-      {
-        ServerCommand: 'ServiceBroadcast',
-        BroadcastType: 'Chat',
-        BroadcastPayload: { BroadcastDuration: 0, LocalizedText: [{ Key: 'en', Title: '', Body: `V1 (SB Chat dur=0): ${commandArgs}` }] }
+    const senderFuncomId = 'Server#0001';
+    const message = commandArgs;
+    const mapName = 'HaggaBasin';
+    const dimension = 0;
+    const crypto = require('crypto');
+    const msgId = crypto.randomUUID ? crypto.randomUUID() : 'chat-' + Date.now();
+    
+    const date = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const timestamp = `${date.getUTCFullYear()}.${pad(date.getUTCMonth() + 1)}.${pad(date.getUTCDate())}-${pad(date.getUTCHours())}.${pad(date.getUTCMinutes())}.${pad(date.getUTCSeconds())}`;
+    
+    const inner = {
+      m_Id: msgId,
+      m_ChannelType: "Map",
+      m_bUseSpoofedUserName: false,
+      m_SpoofedUserNameFrom: {
+        m_TableId: "",
+        m_Key: "",
+        m_UnlocalizedName: ""
       },
-      {
-        ServerCommand: 'ServiceBroadcast',
-        BroadcastType: 'Chat',
-        BroadcastPayload: { BroadcastDuration: 10, LocalizedText: [{ Key: 'en', Title: '', Body: `V2 (SB Chat dur=10): ${commandArgs}` }] }
+      m_FuncomIdFrom: senderFuncomId,
+      m_UserNameTo: "",
+      m_Message: {
+        m_UnlocalizedMessage: message,
+        m_LocalizedMessage: {
+          m_TableId: "",
+          m_Key: "",
+          m_FormatArgs: []
+        }
       },
-      {
-        ServerCommand: 'ServiceBroadcast',
-        BroadcastType: 'System',
-        BroadcastPayload: { BroadcastDuration: 10, LocalizedText: [{ Key: 'en', Title: '', Body: `V3 (SB System dur=10): ${commandArgs}` }] }
-      },
-      {
-        ServerCommand: 'ServiceBroadcast',
-        BroadcastType: 'Notification',
-        BroadcastPayload: { BroadcastDuration: 10, LocalizedText: [{ Key: 'en', Title: '', Body: `V4 (SB Notif dur=10): ${commandArgs}` }] }
-      },
-      {
-        ServerCommand: 'ServiceChat',
-        Message: `V5 (ServiceChat): ${commandArgs}`
-      },
-      {
-        ServerCommand: 'ChatMessage',
-        Message: `V6 (ChatMessage): ${commandArgs}`
-      },
-      {
-        Command: 'say',
-        Args: `V7 (say): ${commandArgs}`,
-        Timestamp: Date.now(),
-        Token: ''
-      },
-      {
-        Command: 'broadcast',
-        Args: `V8 (broadcast): ${commandArgs}`,
-        Timestamp: Date.now(),
-        Token: ''
-      }
-    ];
+      m_Timestamp: timestamp,
+      m_OriginLocation: { X: 0, Y: 0, Z: 0 },
+      m_HasSeenMessage: false
+    };
 
-    console.log(`[Command] Sending all 8 chat variants for discovery`);
-    let results = [];
-    for (const v of variants) {
-      const payloadString = JSON.stringify({
-        Version: 2,
-        AuthToken: getAuthToken(),
-        MessageContent: JSON.stringify(v)
-      });
-      if (useCliFallback) {
-        results.push(await sendViaCli(payloadString));
-      } else {
-        results.push(await sendViaAmqp(payloadString));
-      }
-      await new Promise(r => setTimeout(r, 500)); // sleep between messages
+    const outer = {
+      content: JSON.stringify(inner),
+      Type: "TextChat"
+    };
+
+    const payloadString = JSON.stringify(outer);
+    const routingKey = `${mapName}.${dimension}`;
+    const exchange = 'chat.map';
+    
+    console.log(`[Command] Sending direct chat message: "${message}" to exchange: ${exchange}`);
+    if (useCliFallback) {
+      throw new Error("CLI fallback is no longer supported for chat.map, please use AMQP.");
+    } else {
+      const options = {
+        contentType: 'application/json',
+        messageId: msgId,
+        type: 'text_chat',
+        userId: senderFuncomId, // wait, Erlang script used senderB64 which was A5C0DE5E12A00001
+        appId: 'fls_backend',
+        deliveryMode: 2
+      };
+      // Wait, in Erlang it was:
+      // Sender = base64:decode(<<"${senderB64}">>) -> A5C0DE5E12A00001
+      options.userId = 'A5C0DE5E12A00001';
+      
+      return sendViaAmqp(payloadString, exchange, routingKey, options);
     }
-    return results[0];
   } else {
     fields = {
       Command: commandName,
@@ -152,10 +154,10 @@ async function sendServerCommand(commandName, commandArgs = '') {
 /**
  * Mode 1: Send via Direct AMQP Connection
  */
-async function sendViaAmqp(payloadString) {
+async function sendViaAmqp(payloadString, overrideExchange, overrideRoutingKey, overrideOptions) {
   const rabbitUrl = process.env.RABBITMQ_URL || 'amqp://localhost:31982';
-  const exchange = process.env.RABBITMQ_EXCHANGE || 'heartbeats';
-  const routingKey = process.env.RABBITMQ_ROUTING_KEY || 'notifications';
+  const exchange = overrideExchange || process.env.RABBITMQ_EXCHANGE || 'heartbeats';
+  const routingKey = overrideRoutingKey || process.env.RABBITMQ_ROUTING_KEY || 'notifications';
 
   let connection;
   try {
@@ -165,10 +167,12 @@ async function sendViaAmqp(payloadString) {
     const buffer = Buffer.from(payloadString, 'utf8');
 
     console.log(`[AMQP] Publishing to exchange: "${exchange}", routingKey: "${routingKey}"`);
-    const published = channel.publish(exchange, routingKey, buffer, {
+    const options = overrideOptions || {
       contentType: 'application/json',
       deliveryMode: 2 // Persistent
-    });
+    };
+    
+    const published = channel.publish(exchange, routingKey, buffer, options);
 
     await channel.close();
     return published;
