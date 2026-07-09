@@ -22,18 +22,18 @@ function getAuthToken() {
   return BUILTIN_COMMAND_AUTH_TOKEN;
 }
 
-let cachedFlsId = null;
-let lastFlsIdFetch = 0;
+let cachedFlsData = null;
+let lastFlsDataFetch = 0;
 
 /**
- * Fetches the FLS Hex ID for the 'Discord' character from Postgres.
+ * Fetches the FLS Hex ID and Funcom ID for the 'Discord' character from Postgres.
  * The Game server requires a real, database-backed FLS ID as the AMQP user_id for Map Chat.
  * We cache it for 5 minutes to avoid hammering the database on every message.
  */
-async function getDiscordFlsId() {
+async function getDiscordFlsData() {
   const cacheTtlMs = 5 * 60 * 1000; // 5 minutes
-  if (cachedFlsId && (Date.now() - lastFlsIdFetch < cacheTtlMs)) {
-    return cachedFlsId;
+  if (cachedFlsData && (Date.now() - lastFlsDataFetch < cacheTtlMs)) {
+    return cachedFlsData;
   }
 
   const client = new Client({
@@ -46,29 +46,33 @@ async function getDiscordFlsId() {
 
   try {
     await client.connect();
-    // Look for a character literally named "Discord"
+    // Look for a character whose name starts with "Discord#"
     const res = await client.query(`
-      SELECT ac."user" FROM dune.accounts ac 
+      SELECT ac."user", convert_from(e.encrypted_funcom_id, 'UTF8') as funcom_id FROM dune.accounts ac 
       JOIN dune.encrypted_accounts e ON e.id = ac.id 
-      WHERE convert_from(e.encrypted_funcom_id, 'UTF8') = 'Discord' LIMIT 1
+      WHERE convert_from(e.encrypted_funcom_id, 'UTF8') LIKE 'Discord#%' LIMIT 1
     `);
     
     if (res.rows.length > 0) {
-      cachedFlsId = res.rows[0].user;
-      lastFlsIdFetch = Date.now();
-      console.log(`[PG] Successfully resolved Discord FLS ID: ${cachedFlsId}`);
+      cachedFlsData = { flsId: res.rows[0].user, funcomId: res.rows[0].funcom_id };
+      lastFlsDataFetch = Date.now();
+      console.log(`[PG] Successfully resolved Discord bot character: ${cachedFlsData.funcomId}`);
     } else {
       // Fallback: Just grab the first available user so it doesn't hard-crash
       console.warn(`[PG] Warning: Character 'Discord' not found! Falling back to any valid user.`);
-      const fbRes = await client.query(`SELECT "user" FROM dune.accounts LIMIT 1`);
+      const fbRes = await client.query(`
+        SELECT ac."user", convert_from(e.encrypted_funcom_id, 'UTF8') as funcom_id FROM dune.accounts ac 
+        JOIN dune.encrypted_accounts e ON e.id = ac.id 
+        LIMIT 1
+      `);
       if (fbRes.rows.length > 0) {
-        cachedFlsId = fbRes.rows[0].user;
-        lastFlsIdFetch = Date.now();
+        cachedFlsData = { flsId: fbRes.rows[0].user, funcomId: fbRes.rows[0].funcom_id };
+        lastFlsDataFetch = Date.now();
       } else {
         throw new Error('No users found in database to act as chat sender.');
       }
     }
-    return cachedFlsId;
+    return cachedFlsData;
   } catch (err) {
     console.error('[PG] Error fetching FLS ID:', err.message);
     throw err;
@@ -119,7 +123,7 @@ async function sendServerCommand(commandName, commandArgs = '') {
       }
     };
   } else if (commandName === 'chat') {
-    const senderFuncomId = 'Discord#0001';
+    // We defer building the payload until we get the valid FuncomId
     const message = commandArgs;
     const mapName = 'HaggaBasin';
     const dimension = 0;
@@ -130,50 +134,50 @@ async function sendServerCommand(commandName, commandArgs = '') {
     const pad = (n) => String(n).padStart(2, "0");
     const timestamp = `${date.getUTCFullYear()}.${pad(date.getUTCMonth() + 1)}.${pad(date.getUTCDate())}-${pad(date.getUTCHours())}.${pad(date.getUTCMinutes())}.${pad(date.getUTCSeconds())}`;
     
-    const inner = {
-      m_Id: msgId,
-      m_ChannelType: "Map",
-      m_bUseSpoofedUserName: false,
-      m_SpoofedUserNameFrom: {
-        m_TableId: "",
-        m_Key: "",
-        m_UnlocalizedName: ""
-      },
-      m_FuncomIdFrom: senderFuncomId,
-      m_UserNameTo: "",
-      m_Message: {
-        m_UnlocalizedMessage: message,
-        m_LocalizedMessage: {
-          m_TableId: "",
-          m_Key: "",
-          m_FormatArgs: []
-        }
-      },
-      m_Timestamp: timestamp,
-      m_OriginLocation: { X: 0, Y: 0, Z: 0 },
-      m_HasSeenMessage: false
-    };
-
-    let outer = {
-      content: JSON.stringify(inner),
-      Type: "TextChat"
-    };
-
-    let payloadString = JSON.stringify(outer);
-    const routingKey = `${mapName}.${dimension}`;
-    const exchange = 'chat.map';
-    
-    console.log(`[Command] Sending direct chat message: "${message}" to exchange: ${exchange}`);
+    console.log(`[Command] Sending direct chat message: "${message}" to exchange: chat.map`);
     if (useCliFallback) {
       
-      // Fetch the valid hex FLS ID from the database for the AMQP user_id validation
-      const hexFlsId = await getDiscordFlsId();
+      // Fetch the valid hex FLS ID and FuncomID from the database
+      const senderData = await getDiscordFlsData();
+      
+      const inner = {
+        m_Id: msgId,
+        m_ChannelType: "Map",
+        m_bUseSpoofedUserName: false,
+        m_SpoofedUserNameFrom: {
+          m_TableId: "",
+          m_Key: "",
+          m_UnlocalizedName: ""
+        },
+        m_FuncomIdFrom: senderData.funcomId,
+        m_UserNameTo: "",
+        m_Message: {
+          m_UnlocalizedMessage: message,
+          m_LocalizedMessage: {
+            m_TableId: "",
+            m_Key: "",
+            m_FormatArgs: []
+          }
+        },
+        m_Timestamp: timestamp,
+        m_OriginLocation: { X: 0, Y: 0, Z: 0 },
+        m_HasSeenMessage: false
+      };
+
+      const outerPayload = {
+        content: JSON.stringify(inner),
+        Type: "TextChat"
+      };
+
+      const payloadString = JSON.stringify(outerPayload);
+      const routingKey = `${mapName}.${dimension}`;
+      const exchange = 'chat.map';
       
       // Restore CLI fallback for chat.map with proper headers!
       const outerB64 = Buffer.from(payloadString, 'utf8').toString('base64');
       const routingB64 = Buffer.from(routingKey, 'utf8').toString('base64');
       const exchangeB64 = Buffer.from(exchange, 'utf8').toString('base64');
-      const senderFuncomIdB64 = Buffer.from(hexFlsId, 'utf8').toString('base64'); // Using fetched hex FLS id
+      const senderFuncomIdB64 = Buffer.from(senderData.flsId, 'utf8').toString('base64'); // Using fetched hex FLS id
 
       const erlangScript = `
 Outer = base64:decode(<<"${outerB64}">>),
