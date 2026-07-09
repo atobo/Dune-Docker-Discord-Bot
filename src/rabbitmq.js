@@ -137,9 +137,6 @@ async function sendServerCommand(commandName, commandArgs = '') {
     console.log(`[Command] Sending direct chat message: "${message}" to exchange: chat.map`);
     if (useCliFallback) {
       
-      // Fetch the valid hex FLS ID and FuncomID from the database
-      const senderData = await getDiscordFlsData();
-      
       const inner = {
         m_Id: msgId,
         m_ChannelType: "Map",
@@ -149,7 +146,7 @@ async function sendServerCommand(commandName, commandArgs = '') {
           m_Key: "",
           m_UnlocalizedName: "Discord Bot"
         },
-        m_FuncomIdFrom: senderData.funcomId,
+        m_FuncomIdFrom: 'Server#0001',
         m_UserNameTo: "",
         m_Message: {
           m_UnlocalizedMessage: message,
@@ -177,7 +174,7 @@ async function sendServerCommand(commandName, commandArgs = '') {
       const outerB64 = Buffer.from(payloadString, 'utf8').toString('base64');
       const routingB64 = Buffer.from(routingKey, 'utf8').toString('base64');
       const exchangeB64 = Buffer.from(exchange, 'utf8').toString('base64');
-      const senderFuncomIdB64 = Buffer.from(senderData.flsId, 'utf8').toString('base64'); // Using fetched hex FLS id
+      const senderFuncomIdB64 = Buffer.from('A5C0DE5E12A00001', 'utf8').toString('base64'); // Using hardcoded Server Hex FLS ID
 
       const erlangScript = `
 Outer = base64:decode(<<"${outerB64}">>),
