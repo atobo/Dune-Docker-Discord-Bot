@@ -65,7 +65,7 @@ async function sendServerCommand(commandName, commandArgs = '') {
   } else if (commandName === 'chat') {
     const senderFuncomId = 'Server#0001';
     const message = commandArgs;
-    const mapName = 'HaggaBasin';
+    const mapName = 'Survival_1';
     const dimension = 0;
     const crypto = require('crypto');
     const msgId = crypto.randomUUID ? crypto.randomUUID() : 'chat-' + Date.now();
