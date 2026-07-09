@@ -143,11 +143,11 @@ async function sendServerCommand(commandName, commandArgs = '') {
       const inner = {
         m_Id: msgId,
         m_ChannelType: "Map",
-        m_bUseSpoofedUserName: false,
+        m_bUseSpoofedUserName: true,
         m_SpoofedUserNameFrom: {
           m_TableId: "",
           m_Key: "",
-          m_UnlocalizedName: ""
+          m_UnlocalizedName: "Discord Bot"
         },
         m_FuncomIdFrom: senderData.funcomId,
         m_UserNameTo: "",
