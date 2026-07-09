@@ -117,7 +117,13 @@ io:format("publish=~p exchange=chat.map routing=~s~n", [Result, Routing]).
 }
 
 async function main() {
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  const client = new Client({
+    user: process.env.DB_USER || 'dune',
+    password: process.env.DB_PASSWORD || 'dune',
+    host: process.env.DB_HOST || '127.0.0.1',
+    port: process.env.DB_PORT || 15432,
+    database: process.env.DB_NAME || 'dune'
+  });
   try {
     await client.connect();
     await ensurePersona(client);
