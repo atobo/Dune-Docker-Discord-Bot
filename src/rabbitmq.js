@@ -121,7 +121,7 @@ async function sendServerCommand(commandName, commandArgs = '') {
   } else if (commandName === 'chat') {
     const senderFuncomId = 'Discord#0001';
     const message = commandArgs;
-    const mapName = 'Survival_1';
+    const mapName = 'HaggaBasin';
     const dimension = 0;
     const crypto = require('crypto');
     const msgId = crypto.randomUUID ? crypto.randomUUID() : 'chat-' + Date.now();
