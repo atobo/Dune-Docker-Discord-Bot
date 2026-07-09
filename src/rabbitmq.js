@@ -63,18 +63,66 @@ async function sendServerCommand(commandName, commandArgs = '') {
       }
     };
   } else if (commandName === 'chat') {
-    fields = {
-      ServerCommand: 'ServiceBroadcast',
-      BroadcastType: 'Chat',
-      BroadcastPayload: {
-        BroadcastDuration: 0,
-        LocalizedText: ['en', 'en-US'].map(key => ({
-          Key: key,
-          Title: '',
-          Body: commandArgs
-        }))
+    // Send all variants to discover which one works
+    const variants = [
+      {
+        ServerCommand: 'ServiceBroadcast',
+        BroadcastType: 'Chat',
+        BroadcastPayload: { BroadcastDuration: 0, LocalizedText: [{ Key: 'en', Title: '', Body: `V1 (SB Chat dur=0): ${commandArgs}` }] }
+      },
+      {
+        ServerCommand: 'ServiceBroadcast',
+        BroadcastType: 'Chat',
+        BroadcastPayload: { BroadcastDuration: 10, LocalizedText: [{ Key: 'en', Title: '', Body: `V2 (SB Chat dur=10): ${commandArgs}` }] }
+      },
+      {
+        ServerCommand: 'ServiceBroadcast',
+        BroadcastType: 'System',
+        BroadcastPayload: { BroadcastDuration: 10, LocalizedText: [{ Key: 'en', Title: '', Body: `V3 (SB System dur=10): ${commandArgs}` }] }
+      },
+      {
+        ServerCommand: 'ServiceBroadcast',
+        BroadcastType: 'Notification',
+        BroadcastPayload: { BroadcastDuration: 10, LocalizedText: [{ Key: 'en', Title: '', Body: `V4 (SB Notif dur=10): ${commandArgs}` }] }
+      },
+      {
+        ServerCommand: 'ServiceChat',
+        Message: `V5 (ServiceChat): ${commandArgs}`
+      },
+      {
+        ServerCommand: 'ChatMessage',
+        Message: `V6 (ChatMessage): ${commandArgs}`
+      },
+      {
+        Command: 'say',
+        Args: `V7 (say): ${commandArgs}`,
+        Timestamp: Date.now(),
+        Token: ''
+      },
+      {
+        Command: 'broadcast',
+        Args: `V8 (broadcast): ${commandArgs}`,
+        Timestamp: Date.now(),
+        Token: ''
       }
-    };
+    ];
+
+    console.log(`[Command] Sending all 8 chat variants for discovery`);
+    let results = [];
+    for (const v of variants) {
+      const payloadString = JSON.stringify({
+        Version: 2,
+        AuthToken: getAuthToken(),
+        MessageContent: JSON.stringify(v)
+      });
+      if (useCliFallback) {
+        results.push(await sendViaCli(payloadString));
+      } else {
+        results.push(await sendViaAmqp(payloadString));
+      }
+      await new Promise(r => setTimeout(r, 500)); // sleep between messages
+    }
+    return results[0];
   } else {
     fields = {
       Command: commandName,

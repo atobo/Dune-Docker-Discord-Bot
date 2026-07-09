@@ -4,7 +4,7 @@
   "name": "Discord Bot Integration",
   "description": "Companion UI for configuring the RedBlink Discord Bot Addon.",
   "author": "RedBlink Community",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "type": "ui",
   "entry": {
     "navigation": "Discord Bot",
