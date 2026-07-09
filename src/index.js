@@ -23,7 +23,7 @@ const client = new Client({
 });
 
 // Target channel for relays and alerts
-const CHANNEL_ID = process.env.CHANNEL_ID;
+// Configuration is dynamic, so we use process.env.CHANNEL_ID directly when needed
 
 // Log Watcher instance
 let logWatcher = null;
@@ -104,9 +104,10 @@ async function setupLogWatcher() {
 
 // Utility to send simple text message to channel
 async function relayToDiscord(content, colorHex = '#3498DB') {
-  if (!CHANNEL_ID) return;
+  const channelId = process.env.CHANNEL_ID;
+  if (!channelId) return;
   try {
-    const channel = await client.channels.fetch(CHANNEL_ID);
+    const channel = await client.channels.fetch(channelId);
     if (channel) {
       let cleanContent = content || '';
       if (cleanContent.length > 4000) {
@@ -124,9 +125,10 @@ async function relayToDiscord(content, colorHex = '#3498DB') {
 
 // Utility to send Embed to channel
 async function sendEmbedToChannel(embed) {
-  if (!CHANNEL_ID) return;
+  const channelId = process.env.CHANNEL_ID;
+  if (!channelId) return;
   try {
-    const channel = await client.channels.fetch(CHANNEL_ID);
+    const channel = await client.channels.fetch(channelId);
     if (channel) {
       await channel.send({ embeds: [embed] });
     }
@@ -554,7 +556,7 @@ client.on('messageCreate', async (message) => {
   if (message.author.bot || message.webhookId) return;
 
   // Only relay messages sent in the configured channel
-  if (message.channelId !== CHANNEL_ID) return;
+  if (message.channelId !== process.env.CHANNEL_ID) return;
 
   try {
     const authorName = message.member ? message.member.displayName : message.author.username;
