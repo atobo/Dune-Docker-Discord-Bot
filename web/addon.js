@@ -36,8 +36,7 @@
       let config = null;
       try {
         const result = await window.DuneAddon.request("database.query", {
-          query: "SELECT config_value FROM dune.discord_bot_config WHERE config_key = $1",
-          params: ["main"]
+          query: "SELECT config_value FROM dune.discord_bot_config WHERE config_key = 'main'"
         });
         
         if (result && result.length > 0 && result[0].config_value) {
@@ -91,18 +90,17 @@
               config_key VARCHAR(255) PRIMARY KEY,
               config_value JSONB
             )
-          `,
-          params: []
+          `
         });
 
         // Upsert the configuration
+        const configStr = JSON.stringify(newConfig).replace(/'/g, "''");
         await window.DuneAddon.request("database.execute", {
           query: `
             INSERT INTO dune.discord_bot_config (config_key, config_value)
-            VALUES ($1, $2::jsonb)
-            ON CONFLICT (config_key) DO UPDATE SET config_value = $2::jsonb
-          `,
-          params: ["main", JSON.stringify(newConfig)]
+            VALUES ('main', '${configStr}'::jsonb)
+            ON CONFLICT (config_key) DO UPDATE SET config_value = '${configStr}'::jsonb
+          `
         });
 
         showMessage("Configuration saved successfully.");
