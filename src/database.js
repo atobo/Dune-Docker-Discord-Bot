@@ -542,8 +542,8 @@ async function constructBlueprintAtPlayer(characterName, blueprint) {
 
       for (const chunk of chunks) {
         let valueStrings = [];
-        let params = [buildingId, actorId];
-        let pIndex = 3;
+        let params = [buildingId];
+        let pIndex = 2;
 
         chunk.forEach((inst, idx) => {
           const wx = px + (inst.x - cx);
