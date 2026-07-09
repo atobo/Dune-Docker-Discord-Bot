@@ -115,27 +115,104 @@ async function sendServerCommand(commandName, commandArgs = '') {
       }
     };
   } else if (commandName === 'chat') {
-    // We defer building the payload until we get the valid FuncomId
     const message = commandArgs;
-    const mapName = 'HaggaBasin';
+    const msgId = `web-discord-bot-${Date.now()}`;
+    const date = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const timestamp = `${date.getUTCFullYear()}.${pad(date.getUTCMonth() + 1)}.${pad(date.getUTCDate())}-${pad(date.getUTCHours())}.${pad(date.getUTCMinutes())}.${pad(date.getUTCSeconds())}`;
     const dimension = 0;
-    // Due to aggressive server-side validation on chat.map (dropping offline/spoofed senders),
-    // we route Discord chat through ServiceBroadcast so it is guaranteed to display in-game.
-    console.log(`[Command] Routing chat message as ServiceBroadcast: "${message}"`);
-    
-    fields = {
-      ServerCommand: 'ServiceBroadcast',
-      BroadcastType: 'Generic',
-      Text: `[Discord Bot]: ${message}`,
-      TimeSecs: 10,
-      ColorR: 230,
-      ColorG: 126,
-      ColorB: 34
-    };
 
-    // Update command name so it goes to orchestrator instead of CLI fallback
-    commandName = 'ServiceBroadcast';
-    useCliFallback = false;
+    console.log(`[Command] Sending direct chat message: "${message}" to exchange: chat.map`);
+    if (useCliFallback) {
+      
+      // Use RedBlink's synthetic server persona which is already seeded in the database
+      const senderFuncomId = "Server#4242";
+      const senderHexFlsId = "5E121CE000000001";
+      const spoofedName = "Discord Bot";
+
+      const inner = {
+        m_Id: msgId,
+        m_ChannelType: "Map",
+        m_bUseSpoofedUserName: true,
+        m_SpoofedUserNameFrom: {
+          m_TableId: "",
+          m_Key: "",
+          m_UnlocalizedName: spoofedName
+        },
+        m_FuncomIdFrom: senderFuncomId,
+        m_UserNameTo: "",
+        m_Message: {
+          m_UnlocalizedMessage: message,
+          m_LocalizedMessage: {
+            m_TableId: "",
+            m_Key: "",
+            m_FormatArgs: []
+          }
+        },
+        m_Timestamp: timestamp,
+        m_OriginLocation: { X: 0, Y: 0, Z: 0 },
+        m_HasSeenMessage: false
+      };
+
+      const outerPayload = {
+        content: JSON.stringify(inner),
+        Type: "TextChat"
+      };
+
+      const payloadString = JSON.stringify(outerPayload);
+      const routingKey = `HaggaBasin.${dimension}`;
+      const exchange = 'chat.map';
+      
+      const outerB64 = Buffer.from(payloadString, 'utf8').toString('base64');
+      const routingB64 = Buffer.from(routingKey, 'utf8').toString('base64');
+      const exchangeB64 = Buffer.from(exchange, 'utf8').toString('base64');
+      const senderIdB64 = Buffer.from(senderHexFlsId, 'utf8').toString('base64');
+
+      const erlangScript = `
+Outer = base64:decode(<<"${outerB64}">>),
+Routing = base64:decode(<<"${routingB64}">>),
+Sender = base64:decode(<<"${senderIdB64}">>),
+Exchange = base64:decode(<<"${exchangeB64}">>),
+XName = rabbit_misc:r(<<"/">>, exchange, Exchange),
+X = rabbit_exchange:lookup_or_die(XName),
+MsgId = list_to_binary("${msgId}"),
+P = {list_to_atom("P_basic"), <<"Content">>, undefined, [], undefined, undefined, undefined, undefined, undefined, MsgId, undefined, <<"text_chat">>, Sender, <<"fls_backend">>, undefined},
+Content = rabbit_basic:build_content(P, Outer),
+{ok, Msg} = rabbit_basic:message(XName, Routing, Content),
+Result = rabbit_queue_type:publish_at_most_once(X, Msg),
+io:format("publish=~p exchange=chat.map routing=~s~n", [Result, Routing]).
+`.trim().replace(/\n/g, ' ');
+
+      const containerName = process.env.RABBITMQ_CONTAINER_NAME || 'dune-rmq-game';
+      const cliCommand = `docker exec -i ${containerName} rabbitmqctl eval '${erlangScript}'`;
+      
+      console.log(`[CLI] Executing chat.map fallback command with FLS ID ${senderHexFlsId}...`);
+      return new Promise((resolve, reject) => {
+        exec(cliCommand, (error, stdout, stderr) => {
+          if (error) {
+            console.error(`[CLI] Direct chat error: ${error.message}`);
+            return reject(error);
+          }
+          console.log(`[CLI] Direct chat success: ${stdout.trim()}`);
+          if (!/publish=ok/.test(stdout)) {
+            return reject(new Error(`RabbitMQ chat publish did not report publish=ok. Output: ${stdout}`));
+          }
+          resolve(stdout.trim());
+        });
+      });
+    } else {
+      // Direct AMQP fallback for chat not implemented in this snippet, defaulting to ServiceBroadcast logic
+      fields = {
+        ServerCommand: 'ServiceBroadcast',
+        BroadcastType: 'Generic',
+        Text: `[Discord Bot]: ${message}`,
+        TimeSecs: 10,
+        ColorR: 230,
+        ColorG: 126,
+        ColorB: 34
+      };
+      commandName = 'ServiceBroadcast';
+    }
   } else {
     fields = {
       Command: commandName,
