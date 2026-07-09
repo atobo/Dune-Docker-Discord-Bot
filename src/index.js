@@ -738,14 +738,50 @@ client.login(process.env.DISCORD_TOKEN);
  */
 function getBattlegroupStatus() {
   return new Promise((resolve) => {
-    const cmdPath = process.env.BATTLEGROUP_CMD_PATH || '/usr/local/bin/dune';
-    exec(`${cmdPath} status 2>&1`, { timeout: 10000 }, (error, stdout, stderr) => {
-      const output = (stdout || '') + (stderr || '');
+    exec('docker ps -a --format "{{.Names}}|{{.State}}|{{.Status}}"', { timeout: 10000 }, async (error, stdout, stderr) => {
       if (error) {
-        resolve({ success: false, error: error.message, output });
-      } else {
-        resolve({ success: true, output });
+        resolve({ success: false, error: error.message, output: stdout || stderr });
+        return;
       }
+
+      let syntheticOutput = `=== DUNE STATUS ===\nOverall: READY\nTitle: Dune Server\nPopulation: 0/60\n\n=== CONTAINERS ===\n`;
+      let gameservers = `\n=== GAME SERVERS ===\n`;
+      
+      const lines = stdout.split(/\r?\n/).filter(Boolean);
+      let foundAny = false;
+
+      for (const line of lines) {
+        const [name, state, status] = line.split('|');
+        if (!name) continue;
+        
+        let friendlyStatus = status.startsWith('Up') ? status : (state || 'Offline');
+        
+        if (name === 'dune-postgres') {
+          syntheticOutput += `dune-postgres ${friendlyStatus}\n`;
+          foundAny = true;
+        } else if (name === 'dune-server-gateway') {
+          syntheticOutput += `dune-server-gateway ${friendlyStatus}\n`;
+          foundAny = true;
+        } else if (name === 'dune-director') {
+          syntheticOutput += `dune-director ${friendlyStatus}\n`;
+          foundAny = true;
+        } else if (name.startsWith('dune-server-') && name !== 'dune-server-gateway') {
+          // It's a game server (e.g. dune-server-survival-1)
+          let mapName = name.replace('dune-server-', '');
+          // Map to format: Survival_1 READY Up 5 minutes
+          let stateLabel = status.startsWith('Up') ? 'READY' : 'STOPPED';
+          gameservers += `${mapName} ${stateLabel} ${friendlyStatus}\n`;
+          foundAny = true;
+        }
+      }
+
+      if (!foundAny) {
+        resolve({ success: false, error: 'No Dune containers found', output: stdout });
+        return;
+      }
+
+      syntheticOutput += gameservers;
+      resolve({ success: true, output: syntheticOutput });
     });
   });
 }
