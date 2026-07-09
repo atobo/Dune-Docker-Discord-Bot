@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Discord Bot Integration</title>
+  <link rel="stylesheet" href="addon.css">
+</head>
+<body data-addon-id="discord-bot">
+  <div class="container">
+    <h1>Discord Bot Configuration</h1>
+    <p>Configure your Discord Bot token here. The backend container will automatically read these values.</p>
+
+    <form id="config-form">
+      <div class="form-group">
+        <label for="discord-token">Discord Token (DISCORD_TOKEN)</label>
+        <input type="password" id="discord-token" placeholder="Enter bot token">
+      </div>
+      <div class="form-group">
+        <label for="client-id">Client ID (CLIENT_ID)</label>
+        <input type="text" id="client-id" placeholder="Enter client ID">
+      </div>
+      <div class="form-group">
+        <label for="guild-id">Guild ID (Optional, for instant slash commands)</label>
+        <input type="text" id="guild-id" placeholder="Enter guild ID">
+      </div>
+      <div class="form-group">
+        <label for="rabbitmq-url">RabbitMQ URL</label>
+        <input type="text" id="rabbitmq-url" placeholder="amqp://guest:guest@rabbitmq:5672" value="amqp://guest:guest@rabbitmq:5672">
+      </div>
+
+      <button type="submit" id="save-btn">Save Configuration</button>
+    </form>
+    <div id="status-message"></div>
+  </div>
+
+  <script src="dune-addon-bridge.js"></script>
+  <script src="addon.js"></script>
+</body>
+</html>

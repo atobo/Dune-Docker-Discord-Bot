@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  discord-bot:
+    build: .
+    container_name: redblink-discord-bot
+    restart: unless-stopped
+    volumes:
+      # Mount the RedBlink addons directory so the bot can read the addon-data
+      # Change this path if your RedBlink installation is elsewhere
+      - /opt/dune-docker/data/addons/installed/discord-bot:/app/addon-data
+    environment:
+      - NODE_ENV=production
+      # The bot will read DISCORD_TOKEN and CLIENT_ID from /app/addon-data/config.json if available

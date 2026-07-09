@@ -1,7 +1,23 @@
 require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
+
+// Try loading addon-data config
+const addonConfigPath = '/app/addon-data/config.json';
+if (fs.existsSync(addonConfigPath)) {
+  try {
+    const addonConfig = JSON.parse(fs.readFileSync(addonConfigPath, 'utf8'));
+    Object.assign(process.env, addonConfig);
+    console.log('[Init] Loaded configuration from RedBlink Addon storage.');
+  } catch (err) {
+    console.error('[Init] Failed to parse addon config:', err.message);
+  }
+}
+
 const { Client, GatewayIntentBits, EmbedBuilder, ActivityType, MessageFlags } = require('discord.js');
 const database = require('./database');
 const rabbitmq = require('./rabbitmq');
+const automessages = require('./automessages');
 const LogWatcher = require('./logWatcher');
 const itemsList = require('./items.json');
 const { exec } = require('child_process');
@@ -34,6 +50,9 @@ client.once('ready', async () => {
     // Start schema discovery
     await database.discoverSchema();
   }
+
+  // Init automessages
+  automessages.init();
 
   // Test RabbitMQ Connection
   if (process.env.USE_CLI_FALLBACK !== 'true') {
@@ -269,6 +288,60 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.editReply({ embeds: [embed] });
     }
     
+    else if (commandName === 'carepackage') {
+      await interaction.deferReply();
+      const subcommand = interaction.options.getSubcommand();
+      
+      if (subcommand === 'list') {
+        try {
+          const response = await fetch('http://localhost:8088/api/care-package/config');
+          const data = await response.json();
+          const kits = data.kits || [];
+          
+          const embed = new EmbedBuilder()
+            .setTitle('🎁 Available Care Packages')
+            .setColor('#2ECC71')
+            .setTimestamp();
+            
+          if (kits.length === 0) {
+            embed.setDescription('No Care Packages found.');
+          } else {
+            kits.forEach(kit => {
+              const itemsList = (kit.items || []).map(i => `${i.quantity}x ${i.itemId}`).join(', ') || 'No items';
+              embed.addFields({ name: `${kit.name} (\`${kit.id}\`)`, value: itemsList });
+            });
+          }
+          await interaction.editReply({ embeds: [embed] });
+        } catch (error) {
+          console.error('[CarePackage] Error fetching kits:', error.message);
+          await interaction.editReply('❌ Failed to retrieve Care Packages from RedBlink API.');
+        }
+      }
+      
+      else if (subcommand === 'grant') {
+        const playerName = interaction.options.getString('player');
+        const kitId = interaction.options.getString('kit');
+        
+        try {
+          const response = await fetch(`http://localhost:8088/api/care-package/grant/${encodeURIComponent(playerName)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirmation: "GRANT CARE PACKAGE", kitId })
+          });
+          
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || `HTTP error ${response.status}`);
+          }
+          
+          await interaction.editReply(`✅ Successfully dispatched Care Package \`${kitId}\` to **${playerName}**!`);
+        } catch (error) {
+          console.error(`[CarePackage] Error granting kit ${kitId} to ${playerName}:`, error.message);
+          await interaction.editReply(`❌ Failed to grant Care Package: ${error.message}`);
+        }
+      }
+    }
+    
     else if (commandName === 'players') {
       await interaction.deferReply();
       const players = await database.getOnlinePlayers();
@@ -351,6 +424,69 @@ client.on('interactionCreate', async (interaction) => {
           responseContent = responseContent.substring(0, 1997) + '...';
         }
         await interaction.editReply({ content: responseContent });
+      }
+    }
+
+    else if (commandName === 'kick') {
+      await interaction.deferReply();
+      const player = interaction.options.getString('player');
+      const reason = interaction.options.getString('reason') || 'No reason provided';
+      try {
+        await rabbitmq.sendServerCommand('kick', [player, reason]);
+        await interaction.editReply({ content: `✅ Kicked **${player}** for: ${reason}` });
+      } catch (error) {
+        await interaction.editReply({ content: `❌ Failed to kick player: ${error.message}` });
+      }
+    }
+
+    else if (commandName === 'teleport') {
+      await interaction.deferReply();
+      const player = interaction.options.getString('player');
+      const x = interaction.options.getNumber('x');
+      const y = interaction.options.getNumber('y');
+      const z = interaction.options.getNumber('z');
+      try {
+        await rabbitmq.sendServerCommand('teleport', [player, x, y, z]);
+        await interaction.editReply({ content: `✅ Teleported **${player}** to coordinates (${x}, ${y}, ${z}).` });
+      } catch (error) {
+        await interaction.editReply({ content: `❌ Failed to teleport player: ${error.message}` });
+      }
+    }
+
+    else if (commandName === 'announce') {
+      await interaction.deferReply();
+      const message = interaction.options.getString('message');
+      try {
+        await rabbitmq.sendServerCommand('announce', [message]);
+        await interaction.editReply({ content: `✅ Sent global announcement: "${message}"` });
+      } catch (error) {
+        await interaction.editReply({ content: `❌ Failed to send announcement: ${error.message}` });
+      }
+    }
+
+    else if (commandName === 'automessage') {
+      const subcommand = interaction.options.getSubcommand();
+      if (subcommand === 'add') {
+        const interval = interaction.options.getInteger('interval');
+        const message = interaction.options.getString('message');
+        const msg = automessages.addMessage(interval, message);
+        await interaction.reply({ content: `✅ Added automessage ID **${msg.id}** to broadcast every **${interval}** minutes: "${message}"` });
+      } else if (subcommand === 'list') {
+        const msgs = automessages.getMessages();
+        if (msgs.length === 0) {
+          await interaction.reply({ content: 'No active automessages.' });
+        } else {
+          const listStr = msgs.map(m => `**ID ${m.id}** [${m.interval} min]: ${m.text}`).join('\n');
+          await interaction.reply({ content: `**Active Automessages:**\n${listStr}` });
+        }
+      } else if (subcommand === 'remove') {
+        const id = interaction.options.getString('id');
+        const success = automessages.removeMessage(id);
+        if (success) {
+          await interaction.reply({ content: `✅ Removed automessage ID **${id}**` });
+        } else {
+          await interaction.reply({ content: `❌ Automessage ID **${id}** not found.` });
+        }
       }
     }
 
@@ -493,9 +629,13 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/status' && method === 'GET') {
       const dbStatus = await database.testConnection();
       const bgStatus = await getBattlegroupStatus();
+      const memoryStats = await getDockerMemoryStats();
       let parsed = null;
       if (bgStatus.success && bgStatus.output) {
         parsed = parseStatusOutput(bgStatus.output);
+        if (parsed) {
+          parsed.memory = memoryStats;
+        }
       }
       sendJsonResponse(res, 200, {
         success: true,
@@ -510,6 +650,22 @@ const server = http.createServer(async (req, res) => {
         success: true,
         players
       });
+    } 
+    
+    else if (url === '/api/panic' && method === 'POST') {
+      try {
+        const cmdPath = process.env.BATTLEGROUP_CMD_PATH || '/usr/local/bin/dune';
+        exec(`${cmdPath} restart all 2>&1`, { timeout: 60000 }, (error, stdout, stderr) => {
+          const output = (stdout || '') + (stderr || '');
+          if (error) {
+            sendJsonResponse(res, 500, { success: false, error: error.message, output });
+          } else {
+            sendJsonResponse(res, 200, { success: true, output });
+          }
+        });
+      } catch (err) {
+        sendJsonResponse(res, 500, { success: false, error: err.message });
+      }
     } 
     
     else if (url === '/api/restart' && method === 'POST') {
@@ -709,6 +865,35 @@ function executeDuneUpdate(action) {
       } else {
         resolve({ success: true, output });
       }
+    });
+  });
+}
+
+/**
+ * Retrieves memory usage for Dune Docker containers.
+ */
+function getDockerMemoryStats() {
+  return new Promise((resolve) => {
+    exec(`docker stats --no-stream --format "{{.Name}}|{{.MemUsage}}"`, { timeout: 10000 }, (error, stdout) => {
+      const memory = {};
+      if (error) {
+        console.error('[MemoryStats] Failed to fetch docker stats:', error.message);
+        resolve(memory);
+        return;
+      }
+      
+      const lines = stdout.split('\n');
+      for (const line of lines) {
+        const parts = line.split('|');
+        if (parts.length >= 2) {
+          const name = parts[0].trim();
+          const mem = parts[1].split('/')[0].trim(); // Get current usage, drop the limit
+          if (name.includes('dune')) {
+            memory[name] = mem;
+          }
+        }
+      }
+      resolve(memory);
     });
   });
 }

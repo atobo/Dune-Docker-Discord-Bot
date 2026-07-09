@@ -91,7 +91,10 @@ async function getOnlinePlayers() {
       return res.rows.map(row => ({
         name: row.name || 'Unknown',
         level: 'N/A',
-        faction: row.funcom || 'N/A'
+        faction: row.funcom || 'N/A',
+        x: 0.0,
+        y: 0.0,
+        z: 0.0
       }));
     }
 
@@ -125,7 +128,10 @@ async function getOnlinePlayers() {
     return res.rows.map(row => ({
       name: row[info.nameColumn] || 'Unknown',
       level: info.levelColumn ? row[info.levelColumn] : 'N/A',
-      faction: info.factionColumn ? row[info.factionColumn] : 'N/A'
+      faction: info.factionColumn ? row[info.factionColumn] : 'N/A',
+      x: 0.0,
+      y: 0.0,
+      z: 0.0
     }));
   } catch (error) {
     console.error('[Database] Error fetching online players:', error);

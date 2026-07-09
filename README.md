@@ -5,11 +5,15 @@ A Discord bot designed to connect a Discord server with a self-hosted **Dune: Aw
 ## Features
 
 1. **Server Status (`/status`)**: Live check of the server status and database connectivity.
-2. **Player List (`/players`)**: Lists online players with name, level, and faction directly from the PostgreSQL database (using dynamic table mapping).
-3. **Send Commands (`/cmd <command>`)**: Sends administrative console commands (such as `announce`, `kick`, `kill`, `giveitem`) to the game server via RabbitMQ or docker-exec CLI. Restricted to Discord Administrators.
-4. **Restart Services (`/restart <service>`)**: Restarts individual Dune server service containers (e.g. gateway, director, survival server) directly from Discord. Restricted to Discord Administrators.
-5. **Two-Way Chat Relay**: Relays messages written in a specific Discord channel straight to the game server as announcements.
-6. **Real-time Event Alerts**: Automatically tails the server logs to announce player joins, departures, and sandstorms to Discord in real-time.
+2. **Player List (`/players`)**: Lists online players with name, level, and faction directly from the PostgreSQL database.
+3. **Admin Commands**: Dedicated `/giveitem`, `/kick`, `/teleport`, and `/announce` commands to manage the game securely.
+4. **Automated Messages (`/automessage`)**: Schedule recurring broadcasts to the in-game global chat.
+5. **Care Packages (`/carepackage`)**: List and grant RedBlink configured care packages to players.
+6. **Restart Services (`/restart`)**: Restarts individual Dune server service containers directly from Discord.
+7. **Two-Way Chat Relay**: Relays messages written in a specific Discord channel straight to the game server as announcements.
+8. **Real-time Event Alerts**: Automatically tails the server logs to announce player joins, departures, and sandstorms to Discord in real-time.
+9. **Android App Companion**: A beautiful Material Design Android app to monitor the server, view online players, trigger an emergency "Panic" restart, and track live players on dynamic high-res interactive maps for Deep Desert and Hagga Basin.
+10. **RedBlink Addon Integration**: Fully containerized and seamlessly integrates with RedBlink's Community Addon tab for web-based configuration.
 
 ---
 
@@ -59,7 +63,17 @@ A Discord bot designed to connect a Discord server with a self-hosted **Dune: Aw
 
 ## Deployment and Setup
 
-### 1. Install Dependencies
+### 1. Install via RedBlink Console (Recommended Addon Method)
+You can now run this bot effortlessly via the RedBlink Docker Addon system:
+1. Navigate to the **Community Addons** tab in your RedBlink web console.
+2. Search for the **Discord Bot Integration** addon and install it.
+3. Once installed, use the web interface to configure your `DISCORD_TOKEN`, `CLIENT_ID`, and `RABBITMQ_URL`.
+4. Launch the bot using the included `docker-compose.yml` to automatically read the web configuration!
+   ```bash
+   docker-compose up -d
+   ```
+
+### Alternative: Install Locally (Node.js)
 ```bash
 npm install
 ```
@@ -136,29 +150,25 @@ If your bot cannot connect to RabbitMQ directly via AMQP (e.g. due to networking
 
 Once the bot is running, administrators can dispatch commands directly to the Dune server via Discord.
 
-### Sending Announcements (`/cmd announce`)
-The `/cmd` slash command accepts a single `command` string parameter. For the `announce` command, the bot supports the following syntax options:
+### Quick Moderation & Announcements
+The bot provides dedicated slash commands for common server management tasks:
 
-#### 1. Basic Announcement (Default Title & Duration)
-Broadcasts a message with the default title **"Admin Broadcast"** and displays it on-screen for **30 seconds**.
-```text
-/cmd command: announce Your message goes here
-```
-*Example:* `/cmd command: announce Welcome to the server!`
+* **`/kick <player> [reason]`**: Instantly disconnects a player from the server.
+* **`/teleport <player> <x> <y> <z>`**: Moves a player to specific coordinates on the map.
+* **`/announce <message>`**: Broadcasts a global message to all players on the server.
 
-#### 2. Custom Title & Duration
-Customize the title and display duration by separating the arguments using pipe (`|`) characters:
-```text
-/cmd command: announce <Title> | <Message> | [Duration in seconds]
-```
-* **Custom Title & Default Duration:**
-  ```text
-  /cmd command: announce Server Warning | A sandstorm is approaching!
-  ```
-* **Custom Title & Custom Duration:**
-  ```text
-  /cmd command: announce PvP Event | The Arena is now open! | 60
-  ```
+### Care Packages (`/carepackage`)
+Integrates directly with the RedBlink API to grant preset item bundles.
+
+* **`/carepackage list`**: Lists all configured care packages available on the RedBlink backend.
+* **`/carepackage grant <player> <kit>`**: Grants a specific care package to a player.
+
+### Automated Server Broadcasts (`/automessage`)
+You can schedule recurring messages (like server rules or Discord links) to broadcast in-game automatically.
+
+* **`/automessage add <interval> <message>`**: Adds a new repeating message. Interval is in minutes.
+* **`/automessage list`**: Lists all active automessages and their IDs.
+* **`/automessage remove <id>`**: Cancels an active automessage.
 
 ### Giving Items (`/giveitem`) - Recommended
 Because *Dune: Awakening* servers do not have a native `giveitem` console command, the bot gives items by writing them **directly into the player's inventory table in the PostgreSQL database**.
@@ -256,6 +266,7 @@ All sensitive commands are restricted to members with the **Administrator** perm
 | `/restart` | ✅ Yes | Administrators only |
 | `/update check` | ✅ Yes | Administrators only |
 | `/update install` | ✅ Yes | Administrators only |
+| `/carepackage` | ✅ Yes | Administrators only |
 
 ### Configuring Per-Command Role Access in Discord
 
@@ -301,17 +312,20 @@ Here is a recommended starting point for a typical two-tier moderation setup:
 ---
 
 ### General Admin Commands (`/cmd <command_name> <arguments>`)
-All server commands other than `announce` are treated as generic administrative console commands. The bot parses your input at the **first space** to separate the command name from its arguments, and forwards them directly to the Dune server.
+All server commands not covered by dedicated slash commands are treated as generic administrative console commands. The bot parses your input at the **first space** to separate the command name from its arguments, and forwards them directly to the Dune server via RabbitMQ.
 
 > [!CAUTION]
 > **Manual `/cmd giveitem` is disabled**: Trying to run `giveitem` via the generic `/cmd` interface will be blocked by the bot, as standard console dispatching for item giving does not work. You must use the dedicated `/giveitem` command instead.
 
-#### Other Examples (Kick, Kill, etc.)
-* **Kick a player:**
-  ```text
-  /cmd command: kick JohnDoe
-  ```
-* **Kill a player:**
-  ```text
-  /cmd command: kill JohnDoe
-  ```
+---
+
+## 📱 Dune Server Manager (Android App)
+
+In addition to the Discord Bot, this project includes a companion Android application (`dune-android-app`) built with Kotlin and Jetpack Compose.
+
+The app provides a mobile-friendly dashboard linking directly to the Node.js API:
+- **Live Status & Population:** Real-time checking of the database and Docker containers via `docker stats`.
+- **Player List:** See exactly who is online, their level, and their faction.
+- **Server Controls:** Trigger service restarts or game updates directly from your phone.
+- **Emergency Panic:** A dedicated `🚨 PANIC RESTART ALL` button to forcefully restart all server containers when you are away from your PC and need to resolve a critical freeze or issue.
+- **Player Maps:** High-resolution interactive maps covering both Deep Desert and Hagga Basin with live player location markers.

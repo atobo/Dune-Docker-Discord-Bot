@@ -1,0 +1,63 @@
+(function () {
+  const form = document.getElementById("config-form");
+  const tokenInput = document.getElementById("discord-token");
+  const clientIdInput = document.getElementById("client-id");
+  const guildIdInput = document.getElementById("guild-id");
+  const rabbitmqUrlInput = document.getElementById("rabbitmq-url");
+  const saveBtn = document.getElementById("save-btn");
+  const statusMsg = document.getElementById("status-message");
+
+  function showMessage(msg, isError = false) {
+    statusMsg.textContent = msg;
+    statusMsg.className = isError ? "error" : "success";
+    setTimeout(() => { statusMsg.textContent = ""; }, 5000);
+  }
+
+  async function loadConfig() {
+    try {
+      if (window.parent === window) {
+        console.warn("Running outside of Dune Console. Using mock config.");
+        return;
+      }
+      // Assuming a standard bridge command for reading addon data
+      const config = await window.DuneAddon.request("addon.data.read");
+      if (config) {
+        tokenInput.value = config.DISCORD_TOKEN || "";
+        clientIdInput.value = config.CLIENT_ID || "";
+        guildIdInput.value = config.GUILD_ID || "";
+        rabbitmqUrlInput.value = config.RABBITMQ_URL || "amqp://guest:guest@rabbitmq:5672";
+      }
+    } catch (err) {
+      console.error("Failed to load config:", err);
+    }
+  }
+
+  async function saveConfig(e) {
+    e.preventDefault();
+    saveBtn.disabled = true;
+    
+    const newConfig = {
+      DISCORD_TOKEN: tokenInput.value.trim(),
+      CLIENT_ID: clientIdInput.value.trim(),
+      GUILD_ID: guildIdInput.value.trim(),
+      RABBITMQ_URL: rabbitmqUrlInput.value.trim(),
+    };
+
+    try {
+      if (window.parent === window) {
+        console.warn("Running outside of Dune Console. Mock save successful.");
+        showMessage("Configuration saved (mock).");
+      } else {
+        await window.DuneAddon.request("addon.data.write", { data: newConfig });
+        showMessage("Configuration saved successfully.");
+      }
+    } catch (err) {
+      showMessage(err.message || "Failed to save configuration.", true);
+    } finally {
+      saveBtn.disabled = false;
+    }
+  }
+
+  form.addEventListener("submit", saveConfig);
+  loadConfig();
+})();

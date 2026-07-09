@@ -1,4 +1,19 @@
 require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
+
+// Try loading addon-data config
+const addonConfigPath = '/app/addon-data/config.json';
+if (fs.existsSync(addonConfigPath)) {
+  try {
+    const addonConfig = JSON.parse(fs.readFileSync(addonConfigPath, 'utf8'));
+    Object.assign(process.env, addonConfig);
+    console.log('[Init] Loaded configuration from RedBlink Addon storage.');
+  } catch (err) {
+    console.error('[Init] Failed to parse addon config:', err.message);
+  }
+}
+
 const { REST, Routes, SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 
 const commands = [
@@ -19,6 +34,94 @@ const commands = [
         .setRequired(true)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator), // Restrict to Admins
+
+  new SlashCommandBuilder()
+    .setName('kick')
+    .setDescription('Kick a player from the server')
+    .addStringOption(option =>
+      option.setName('player')
+        .setDescription('The name of the player to kick')
+        .setRequired(true)
+        .setAutocomplete(true)
+    )
+    .addStringOption(option =>
+      option.setName('reason')
+        .setDescription('Optional reason for kicking')
+        .setRequired(false)
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
+  new SlashCommandBuilder()
+    .setName('teleport')
+    .setDescription('Teleport a player to specific coordinates')
+    .addStringOption(option =>
+      option.setName('player')
+        .setDescription('The player to teleport')
+        .setRequired(true)
+        .setAutocomplete(true)
+    )
+    .addNumberOption(option =>
+      option.setName('x')
+        .setDescription('X coordinate')
+        .setRequired(true)
+    )
+    .addNumberOption(option =>
+      option.setName('y')
+        .setDescription('Y coordinate')
+        .setRequired(true)
+    )
+    .addNumberOption(option =>
+      option.setName('z')
+        .setDescription('Z coordinate')
+        .setRequired(true)
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
+  new SlashCommandBuilder()
+    .setName('announce')
+    .setDescription('Send a global announcement to the game server')
+    .addStringOption(option =>
+      option.setName('message')
+        .setDescription('The message to announce')
+        .setRequired(true)
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
+  new SlashCommandBuilder()
+    .setName('automessage')
+    .setDescription('Manage automated server broadcasts')
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('add')
+        .setDescription('Add a new automessage')
+        .addIntegerOption(option =>
+          option.setName('interval')
+            .setDescription('Interval in minutes')
+            .setRequired(true)
+            .setMinValue(1)
+        )
+        .addStringOption(option =>
+          option.setName('message')
+            .setDescription('The message to broadcast')
+            .setRequired(true)
+        )
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('list')
+        .setDescription('List all active automessages')
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('remove')
+        .setDescription('Remove an automessage by ID')
+        .addStringOption(option =>
+          option.setName('id')
+            .setDescription('The ID of the automessage to remove')
+            .setRequired(true)
+        )
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   new SlashCommandBuilder()
     .setName('giveitem')
@@ -75,7 +178,33 @@ const commands = [
         .setName('install')
         .setDescription('Download and install the latest game update')
     )
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator) // Restrict to Admins
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator), // Restrict to Admins
+
+  new SlashCommandBuilder()
+    .setName('carepackage')
+    .setDescription('Manage RedBlink Care Packages')
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('list')
+        .setDescription('List all available Care Packages configured in RedBlink')
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('grant')
+        .setDescription('Grant a specific Care Package to a player')
+        .addStringOption(option =>
+          option.setName('player')
+            .setDescription('The name of the player to receive the care package')
+            .setRequired(true)
+            .setAutocomplete(true)
+        )
+        .addStringOption(option =>
+          option.setName('kit')
+            .setDescription('The ID of the care package kit to grant')
+            .setRequired(true)
+        )
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
 ];
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
