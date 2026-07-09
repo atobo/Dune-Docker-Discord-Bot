@@ -130,45 +130,67 @@ async function sendServerCommand(commandName, commandArgs = '') {
       const senderHexFlsId = "5E121CE000000001";
       const spoofedName = "Discord Bot";
 
-      const inner = {
-        m_Id: msgId,
-        m_ChannelType: "Map",
-        m_bUseSpoofedUserName: true,
-        m_SpoofedUserNameFrom: {
-          m_TableId: "",
-          m_Key: "",
-          m_UnlocalizedName: spoofedName
-        },
-        m_FuncomIdFrom: senderFuncomId,
-        m_UserNameTo: "",
-        m_Message: {
-          m_UnlocalizedMessage: message,
-          m_LocalizedMessage: {
+      // Dynamically fetch all active maps where players are currently online
+      const { pool } = require('./database.js');
+      let activeMaps = [{ map: 'HaggaBasin', dimension: 0 }];
+      try {
+        const schema = process.env.DB_SCHEMA || 'dune';
+        const mapRes = await pool.query(`SELECT DISTINCT map, dimension_index FROM ${schema}.player_state WHERE online_status = 'Online'`);
+        if (mapRes.rows.length > 0) {
+          activeMaps = mapRes.rows.map(r => {
+            const rawMap = String(r.map || "").trim() || 'HaggaBasin';
+            // Redblink's mapping rules
+            const MAP_CHAT_REGIONS = { Survival_1: "HaggaBasin", Overmap: "Overland", DeepDesert_1: "DeepDesert", SH_Arrakeen: "Arrakeen", SH_HarkoVillage: "HarkoVillage" };
+            const chatMap = MAP_CHAT_REGIONS[rawMap] || rawMap.replace(/^SH_/, "");
+            return { map: chatMap, dimension: parseInt(r.dimension_index) || 0 };
+          });
+        }
+      } catch (err) {
+        console.error('[CLI] Failed to fetch active maps, defaulting to HaggaBasin.0', err);
+      }
+
+      console.log(`[CLI] Sending map chat to maps: ${JSON.stringify(activeMaps)}`);
+
+      for (const target of activeMaps) {
+        const inner = {
+          m_Id: msgId,
+          m_ChannelType: "Map",
+          m_bUseSpoofedUserName: true,
+          m_SpoofedUserNameFrom: {
             m_TableId: "",
             m_Key: "",
-            m_FormatArgs: []
-          }
-        },
-        m_Timestamp: timestamp,
-        m_OriginLocation: { X: 0, Y: 0, Z: 0 },
-        m_HasSeenMessage: false
-      };
+            m_UnlocalizedName: spoofedName
+          },
+          m_FuncomIdFrom: senderFuncomId,
+          m_UserNameTo: "",
+          m_Message: {
+            m_UnlocalizedMessage: message,
+            m_LocalizedMessage: {
+              m_TableId: "",
+              m_Key: "",
+              m_FormatArgs: []
+            }
+          },
+          m_Timestamp: timestamp,
+          m_OriginLocation: { X: 0, Y: 0, Z: 0 },
+          m_HasSeenMessage: false
+        };
 
-      const outerPayload = {
-        content: JSON.stringify(inner),
-        Type: "TextChat"
-      };
+        const outerPayload = {
+          content: JSON.stringify(inner),
+          Type: "TextChat"
+        };
 
-      const payloadString = JSON.stringify(outerPayload);
-      const routingKey = `HaggaBasin.${dimension}`;
-      const exchange = 'chat.map';
-      
-      const outerB64 = Buffer.from(payloadString, 'utf8').toString('base64');
-      const routingB64 = Buffer.from(routingKey, 'utf8').toString('base64');
-      const exchangeB64 = Buffer.from(exchange, 'utf8').toString('base64');
-      const senderIdB64 = Buffer.from(senderHexFlsId, 'utf8').toString('base64');
+        const payloadString = JSON.stringify(outerPayload);
+        const routingKey = `${target.map}.${target.dimension}`;
+        const exchange = 'chat.map';
+        
+        const outerB64 = Buffer.from(payloadString, 'utf8').toString('base64');
+        const routingB64 = Buffer.from(routingKey, 'utf8').toString('base64');
+        const exchangeB64 = Buffer.from(exchange, 'utf8').toString('base64');
+        const senderIdB64 = Buffer.from(senderHexFlsId, 'utf8').toString('base64');
 
-      const erlangScript = `
+        const erlangScript = `
 Outer = base64:decode(<<"${outerB64}">>),
 Routing = base64:decode(<<"${routingB64}">>),
 Sender = base64:decode(<<"${senderIdB64}">>),
@@ -183,23 +205,26 @@ Result = rabbit_queue_type:publish_at_most_once(X, Msg),
 io:format("publish=~p exchange=chat.map routing=~s~n", [Result, Routing]).
 `.trim().replace(/\n/g, ' ');
 
-      const containerName = process.env.RABBITMQ_CONTAINER_NAME || 'dune-rmq-game';
-      const cliCommand = `docker exec -i ${containerName} rabbitmqctl eval '${erlangScript}'`;
-      
-      console.log(`[CLI] Executing chat.map fallback command with FLS ID ${senderHexFlsId}...`);
-      return new Promise((resolve, reject) => {
-        exec(cliCommand, (error, stdout, stderr) => {
-          if (error) {
-            console.error(`[CLI] Direct chat error: ${error.message}`);
-            return reject(error);
-          }
-          console.log(`[CLI] Direct chat success: ${stdout.trim()}`);
-          if (!/publish=ok/.test(stdout)) {
-            return reject(new Error(`RabbitMQ chat publish did not report publish=ok. Output: ${stdout}`));
-          }
-          resolve(stdout.trim());
+        const containerName = process.env.RABBITMQ_CONTAINER_NAME || 'dune-rmq-game';
+        const cliCommand = `docker exec -i ${containerName} rabbitmqctl eval '${erlangScript}'`;
+        
+        console.log(`[CLI] Executing chat.map fallback command for ${routingKey}...`);
+        await new Promise((resolve, reject) => {
+          exec(cliCommand, (error, stdout, stderr) => {
+            if (error) {
+              console.error(`[CLI] Direct chat error for ${routingKey}: ${error.message}`);
+              return reject(error);
+            }
+            if (!/publish=ok/.test(stdout)) {
+              console.error(`[CLI] Publish failed for ${routingKey}. Output: ${stdout}`);
+            } else {
+              console.log(`[CLI] Direct chat success for ${routingKey}: ${stdout.trim()}`);
+            }
+            resolve();
+          });
         });
-      });
+      }
+      return;
     } else {
       // Direct AMQP fallback for chat not implemented in this snippet, defaulting to ServiceBroadcast logic
       fields = {
