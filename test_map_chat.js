@@ -1,7 +1,8 @@
 const { exec } = require('child_process');
+const crypto = require('crypto');
 
 // Configuration
-const mapName = process.argv[2] || 'Abbir'; // Default to Abbir
+const mapName = process.argv[2] || 'Abbir';
 const dimension = 0;
 const message = process.argv[3] || 'Testing map chat directly';
 const containerName = 'dune-rmq-game';
@@ -9,36 +10,36 @@ const containerName = 'dune-rmq-game';
 // Redblink's synthetic persona
 const senderFuncomId = "Server#4242";
 const senderHexFlsId = "5E121CE000000001";
-const spoofedName = "Discord Bot";
 
 // Timestamps
-const msgId = `web-test-${Date.now()}`;
 const date = new Date();
 const pad = (n) => String(n).padStart(2, "0");
 const timestamp = `${date.getUTCFullYear()}.${pad(date.getUTCMonth() + 1)}.${pad(date.getUTCDate())}-${pad(date.getUTCHours())}.${pad(date.getUTCMinutes())}.${pad(date.getUTCSeconds())}`;
 
 const tests = [
   {
-    name: "1. No Spoofing (RedBlink Default)",
-    m_bUseSpoofedUserName: false,
-    m_SpoofedUserNameFrom: { m_TableId: "", m_Key: "", m_UnlocalizedName: "" },
-    text: `[No Spoof] ${message}`
+    name: "1. Exact RedBlink Match (UUID + Lowercase content)",
+    msgId: `web-map-chat-${crypto.randomUUID()}`,
+    type: "TextChat",
+    outerContentKey: "content",
+    text: `[Exact] ${message}`
   },
   {
-    name: "2. Spoofing with 'Discord Bot'",
-    m_bUseSpoofedUserName: true,
-    m_SpoofedUserNameFrom: { m_TableId: "", m_Key: "", m_UnlocalizedName: spoofedName },
-    text: `[Spoofed] ${message}`
+    name: "2. Exact Whisper Match (UUID + Uppercase Content)",
+    msgId: `web-map-chat-${crypto.randomUUID()}`,
+    type: "ECourierMessageType::TextChat",
+    outerContentKey: "Content",
+    text: `[Upper] ${message}`
   }
 ];
 
 async function runTest(testDef) {
   console.log(`\n=== Running Test: ${testDef.name} ===`);
   const inner = {
-    m_Id: msgId,
+    m_Id: testDef.msgId,
     m_ChannelType: "Map",
-    m_bUseSpoofedUserName: testDef.m_bUseSpoofedUserName,
-    m_SpoofedUserNameFrom: testDef.m_SpoofedUserNameFrom,
+    m_bUseSpoofedUserName: false,
+    m_SpoofedUserNameFrom: { m_TableId: "", m_Key: "", m_UnlocalizedName: "" },
     m_FuncomIdFrom: senderFuncomId,
     m_UserNameTo: "",
     m_Message: {
@@ -50,7 +51,9 @@ async function runTest(testDef) {
     m_HasSeenMessage: false
   };
 
-  const outerPayload = { content: JSON.stringify(inner), Type: "TextChat" };
+  const outerPayload = { Type: testDef.type };
+  outerPayload[testDef.outerContentKey] = JSON.stringify(inner);
+  
   const routingKey = `${mapName}.${dimension}`;
   const exchange = 'chat.map';
   
@@ -66,7 +69,7 @@ Sender = base64:decode(<<"${senderIdB64}">>),
 Exchange = base64:decode(<<"${exchangeB64}">>),
 XName = rabbit_misc:r(<<"/">>, exchange, Exchange),
 X = rabbit_exchange:lookup_or_die(XName),
-MsgId = list_to_binary("${msgId}"),
+MsgId = list_to_binary("${testDef.msgId}"),
 P = {list_to_atom("P_basic"), <<"Content">>, undefined, [], undefined, undefined, undefined, undefined, undefined, MsgId, undefined, <<"text_chat">>, Sender, <<"fls_backend">>, undefined},
 Content = rabbit_basic:build_content(P, Outer),
 {ok, Msg} = rabbit_basic:message(XName, Routing, Content),
