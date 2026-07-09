@@ -9,10 +9,15 @@ if (fs.existsSync(addonConfigPath)) {
   try {
     const addonConfig = JSON.parse(fs.readFileSync(addonConfigPath, 'utf8'));
     Object.assign(process.env, addonConfig);
-    console.log('[Init] Loaded legacy configuration from RedBlink Addon storage (config.json).');
+    // FORCE dune-text-router regardless of what the user accidentally put in the Addon UI
+    process.env.LOG_CONTAINER_NAME = 'dune-text-router';
+    console.log('[Init] Loaded configuration from RedBlink Addon storage.');
   } catch (err) {
-    console.error('[Init] Failed to parse legacy addon config:', err.message);
+    console.error('[Init] Failed to parse addon config:', err.message);
   }
+} else {
+  // If no addon config exists, also forcefully ensure we use text router
+  process.env.LOG_CONTAINER_NAME = 'dune-text-router';
 }
 
 const { Client, GatewayIntentBits, EmbedBuilder, ActivityType, MessageFlags } = require('discord.js');
