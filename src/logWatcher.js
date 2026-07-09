@@ -180,8 +180,8 @@ class LogWatcher {
     this.onLineCallback(line);
 
     // Check dune-text-router logs
-    if (line.includes('received message from')) {
-      const match = line.match(/received message from (\S+) to ([^:]+): (.+)$/);
+    if (line.includes('Redirected message from')) {
+      const match = line.match(/Redirected message from (\S+) to (\S+) using routing key [^:]+: (.+)$/);
       if (match) {
         const [, flsId, destination, jsonStr] = match;
         try {
