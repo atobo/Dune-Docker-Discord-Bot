@@ -710,17 +710,7 @@ const server = http.createServer(async (req, res) => {
         isDockerRestartOutput
       });
     } 
-    
-    else if (url === '/api/debug-query' && method === 'POST') {
-      const body = await readRequestBody(req);
-      const { sql, params } = body;
-      try {
-        const result = await database.pool.query(sql, params);
-        sendJsonResponse(res, 200, { success: true, rows: result.rows });
-      } catch (err) {
-        sendJsonResponse(res, 500, { success: false, error: err.message });
-      }
-    }
+
 
     else if (url === '/api/update' && method === 'POST') {
       const body = await readRequestBody(req);
