@@ -558,7 +558,7 @@ async function constructBlueprintAtPlayer(characterName, blueprint) {
           params.push(inst.building_type);
           params.push([wx, wy, wz, 0.0, 0.0, qz, qw]);
 
-          valueStrings.push(`($1, $${pIndex}, $${pIndex+1}, $${pIndex+2}::real[], $2, 0, 100.0, 0.0, 0, 0, 0, 0.0)`);
+          valueStrings.push(`($1, $${pIndex}, $${pIndex+1}, $${pIndex+2}::real[], NULL, 0, 100.0, 0.0, 0, 0, 0, 0.0)`);
           pIndex += 3;
         });
 
