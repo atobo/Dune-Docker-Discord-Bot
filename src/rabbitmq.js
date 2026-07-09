@@ -2,6 +2,7 @@ const amqp = require('amqplib');
 const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { Client } = require('pg');
 
 const BUILTIN_COMMAND_AUTH_TOKEN = 'Nu6VmPWUMvdPMeB7qErr';
 
@@ -19,6 +20,61 @@ function getAuthToken() {
     console.warn(`[AMQP] Warning: Failed to read token file: ${err.message}`);
   }
   return BUILTIN_COMMAND_AUTH_TOKEN;
+}
+
+let cachedFlsId = null;
+let lastFlsIdFetch = 0;
+
+/**
+ * Fetches the FLS Hex ID for the 'Discord' character from Postgres.
+ * The Game server requires a real, database-backed FLS ID as the AMQP user_id for Map Chat.
+ * We cache it for 5 minutes to avoid hammering the database on every message.
+ */
+async function getDiscordFlsId() {
+  const cacheTtlMs = 5 * 60 * 1000; // 5 minutes
+  if (cachedFlsId && (Date.now() - lastFlsIdFetch < cacheTtlMs)) {
+    return cachedFlsId;
+  }
+
+  const client = new Client({
+    host: process.env.DB_HOST || '127.0.0.1',
+    port: process.env.DB_PORT || 15432,
+    user: process.env.DB_USER || 'dune',
+    password: process.env.DB_PASSWORD || 'dune',
+    database: process.env.DB_NAME || 'dune',
+  });
+
+  try {
+    await client.connect();
+    // Look for a character literally named "Discord"
+    const res = await client.query(`
+      SELECT ac."user" FROM dune.accounts ac 
+      JOIN dune.encrypted_accounts e ON e.id = ac.id 
+      WHERE convert_from(e.encrypted_funcom_id, 'UTF8') = 'Discord' LIMIT 1
+    `);
+    
+    if (res.rows.length > 0) {
+      cachedFlsId = res.rows[0].user;
+      lastFlsIdFetch = Date.now();
+      console.log(`[PG] Successfully resolved Discord FLS ID: ${cachedFlsId}`);
+    } else {
+      // Fallback: Just grab the first available user so it doesn't hard-crash
+      console.warn(`[PG] Warning: Character 'Discord' not found! Falling back to any valid user.`);
+      const fbRes = await client.query(`SELECT "user" FROM dune.accounts LIMIT 1`);
+      if (fbRes.rows.length > 0) {
+        cachedFlsId = fbRes.rows[0].user;
+        lastFlsIdFetch = Date.now();
+      } else {
+        throw new Error('No users found in database to act as chat sender.');
+      }
+    }
+    return cachedFlsId;
+  } catch (err) {
+    console.error('[PG] Error fetching FLS ID:', err.message);
+    throw err;
+  } finally {
+    await client.end();
+  }
 }
 
 /**
@@ -63,7 +119,7 @@ async function sendServerCommand(commandName, commandArgs = '') {
       }
     };
   } else if (commandName === 'chat') {
-    const senderFuncomId = 'Server#0001';
+    const senderFuncomId = 'Discord#0001';
     const message = commandArgs;
     const mapName = 'Survival_1';
     const dimension = 0;
@@ -98,22 +154,26 @@ async function sendServerCommand(commandName, commandArgs = '') {
       m_HasSeenMessage: false
     };
 
-    const outer = {
+    let outer = {
       content: JSON.stringify(inner),
       Type: "TextChat"
     };
 
-    const payloadString = JSON.stringify(outer);
+    let payloadString = JSON.stringify(outer);
     const routingKey = `${mapName}.${dimension}`;
     const exchange = 'chat.map';
     
     console.log(`[Command] Sending direct chat message: "${message}" to exchange: ${exchange}`);
     if (useCliFallback) {
+      
+      // Fetch the valid hex FLS ID from the database for the AMQP user_id validation
+      const hexFlsId = await getDiscordFlsId();
+      
       // Restore CLI fallback for chat.map with proper headers!
       const outerB64 = Buffer.from(payloadString, 'utf8').toString('base64');
       const routingB64 = Buffer.from(routingKey, 'utf8').toString('base64');
       const exchangeB64 = Buffer.from(exchange, 'utf8').toString('base64');
-      const senderFuncomIdB64 = Buffer.from('A5C0DE5E12A00001', 'utf8').toString('base64'); // Using hex FLS id
+      const senderFuncomIdB64 = Buffer.from(hexFlsId, 'utf8').toString('base64'); // Using fetched hex FLS id
 
       const erlangScript = `
 Outer = base64:decode(<<"${outerB64}">>),
@@ -133,7 +193,7 @@ io:format("publish=~p exchange=chat.map routing=~s~n", [Result, Routing]).
       const containerName = process.env.RABBITMQ_CONTAINER_NAME || 'dune-rmq-game';
       const cliCommand = `docker exec -i ${containerName} rabbitmqctl eval '${erlangScript}'`;
       
-      console.log(`[CLI] Executing chat.map fallback command...`);
+      console.log(`[CLI] Executing chat.map fallback command with FLS ID ${hexFlsId}...`);
       return new Promise((resolve, reject) => {
         exec(cliCommand, (error, stdout, stderr) => {
           if (error) {
@@ -157,13 +217,13 @@ io:format("publish=~p exchange=chat.map routing=~s~n", [Result, Routing]).
   }
 
   // Wrap inside the Version 2 envelope expected by the Dune game server orchestrator
-  const outer = {
+  outer = {
     Version: 2,
     AuthToken: getAuthToken(),
     MessageContent: JSON.stringify(fields)
   };
 
-  const payloadString = JSON.stringify(outer);
+  payloadString = JSON.stringify(outer);
   console.log(`[Command] Sending command: "${commandName}" with args: "${commandArgs}"`);
 
   if (useCliFallback) {
