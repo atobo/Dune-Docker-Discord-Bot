@@ -215,6 +215,7 @@ io:format("publish=~p exchange=chat.map routing=~s~n", [Result, Routing]).
       Token: ''
     };
   }
+}
 
   // Wrap inside the Version 2 envelope expected by the Dune game server orchestrator
   outer = {
