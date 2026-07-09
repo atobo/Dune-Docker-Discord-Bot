@@ -63,87 +63,18 @@ async function sendServerCommand(commandName, commandArgs = '') {
       }
     };
   } else if (commandName === 'chat') {
-    // Direct publish to chat.map exchange via rabbitmqctl eval
-    const senderFuncomId = 'Server#0001';
-    const senderHexFlsId = 'A5C0DE5E12A00001';
-    const message = commandArgs; // e.g. "[Discord] user: message"
-    const mapName = 'HaggaBasin';
-    const dimension = 0;
-    const crypto = require('crypto');
-    const msgId = crypto.randomUUID ? crypto.randomUUID() : 'chat-' + Date.now();
-    
-    const date = new Date();
-    const pad = (n) => String(n).padStart(2, "0");
-    const timestamp = `${date.getUTCFullYear()}.${pad(date.getUTCMonth() + 1)}.${pad(date.getUTCDate())}-${pad(date.getUTCHours())}.${pad(date.getUTCMinutes())}.${pad(date.getUTCSeconds())}`;
-    
-    const inner = {
-      m_Id: msgId,
-      m_ChannelType: "Map",
-      m_bUseSpoofedUserName: false,
-      m_SpoofedUserNameFrom: {
-        m_TableId: "",
-        m_Key: "",
-        m_UnlocalizedName: ""
-      },
-      m_FuncomIdFrom: senderFuncomId,
-      m_UserNameTo: "",
-      m_Message: {
-        m_UnlocalizedMessage: message,
-        m_LocalizedMessage: {
-          m_TableId: "",
-          m_Key: "",
-          m_FormatArgs: []
-        }
-      },
-      m_Timestamp: timestamp,
-      m_OriginLocation: { X: 0, Y: 0, Z: 0 },
-      m_HasSeenMessage: false
+    fields = {
+      ServerCommand: 'ServiceBroadcast',
+      BroadcastType: 'Chat',
+      BroadcastPayload: {
+        BroadcastDuration: 0,
+        LocalizedText: ['en', 'en-US'].map(key => ({
+          Key: key,
+          Title: '',
+          Body: commandArgs
+        }))
+      }
     };
-
-    const outer = {
-      content: JSON.stringify(inner),
-      Type: "TextChat"
-    };
-
-    const outerB64 = Buffer.from(JSON.stringify(outer), 'utf8').toString('base64');
-    const routingKey = `${mapName}.${dimension}`; // "HaggaBasin.0"
-    const routingB64 = Buffer.from(routingKey, 'utf8').toString('base64');
-    const senderB64 = Buffer.from(senderHexFlsId, 'utf8').toString('base64');
-    const exchange = 'chat.map';
-    const exchangeB64 = Buffer.from(exchange, 'utf8').toString('base64');
-    
-    const erlangScript = `
-Outer = base64:decode(<<"${outerB64}">>),
-Routing = base64:decode(<<"${routingB64}">>),
-Sender = base64:decode(<<"${senderB64}">>),
-Exchange = base64:decode(<<"${exchangeB64}">>),
-XName = rabbit_misc:r(<<"/">>, exchange, Exchange),
-X = rabbit_exchange:lookup_or_die(XName),
-MsgId = list_to_binary("web-discord-bot-chat-" ++ integer_to_list(erlang:system_time(millisecond))),
-P = {list_to_atom("P_basic"), <<"application/json">>, undefined, undefined, 2, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined},
-Content = rabbit_basic:build_content(P, Outer),
-{ok, Msg} = rabbit_basic:message(XName, Routing, Content),
-Result = rabbit_queue_type:publish_at_most_once(X, Msg),
-io:format("publish=~p exchange=chat.map routing=~s~n", [Result, Routing]).
-`.trim().replace(/\n/g, ' ');
-
-    const containerName = process.env.RABBITMQ_CONTAINER_NAME || 'dune-rmq-game';
-    const cliCommand = `docker exec -i ${containerName} rabbitmqctl eval '${erlangScript}'`;
-    
-    console.log(`[Command] Sending direct chat message: "${message}"`);
-    return new Promise((resolve, reject) => {
-      exec(cliCommand, (error, stdout, stderr) => {
-        if (error) {
-          console.error(`[CLI] Direct chat error: ${error.message}`);
-          return reject(error);
-        }
-        console.log(`[CLI] Direct chat success: ${stdout.trim()}`);
-        if (!/publish=ok/.test(stdout)) {
-          return reject(new Error(`RabbitMQ chat publish did not report publish=ok. Output: ${stdout}`));
-        }
-        resolve(stdout.trim());
-      });
-    });
   } else {
     fields = {
       Command: commandName,
