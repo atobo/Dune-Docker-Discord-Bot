@@ -293,9 +293,9 @@ async function grantBlueprintToPlayer(characterName, blueprint, itemType, custom
   const client = await pool.connect();
 
   try {
-    // 1. Resolve actor_id for character
+    // 1. Resolve actor_id and player_controller_id for character
     const charRes = await client.query(`
-      SELECT player_pawn_id AS actor_id 
+      SELECT player_pawn_id AS actor_id, player_controller_id 
       FROM ${schema}.encrypted_player_state 
       WHERE LOWER(${schema}.decrypt_user_data(encrypted_character_name)) = LOWER($1)
     `, [characterName]);
@@ -304,6 +304,7 @@ async function grantBlueprintToPlayer(characterName, blueprint, itemType, custom
       throw new Error(`Character "${characterName}" not found in database.`);
     }
     const actorId = charRes.rows[0].actor_id;
+    const playerControllerId = charRes.rows[0].player_controller_id;
 
     // 2. Find inventory of type 0
     const invRes = await client.query(`
@@ -350,9 +351,9 @@ async function grantBlueprintToPlayer(characterName, blueprint, itemType, custom
     // 6. Create building blueprint
     const bpInsertRes = await client.query(`
       INSERT INTO ${schema}.building_blueprints (item_id, player_id, building_blueprint_map)
-      VALUES ($1, NULL, '')
+      VALUES ($1, $2, '')
       RETURNING id
-    `, [itemId]);
+    `, [itemId, playerControllerId]);
 
     const blueprintId = bpInsertRes.rows[0].id;
 
