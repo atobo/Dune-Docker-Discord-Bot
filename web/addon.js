@@ -4,6 +4,7 @@
   const clientIdInput = document.getElementById("client-id");
   const guildIdInput = document.getElementById("guild-id");
   const rabbitmqUrlInput = document.getElementById("rabbitmq-url");
+  const channelIdInput = document.getElementById("channel-id");
   const saveBtn = document.getElementById("save-btn");
   const statusMsg = document.getElementById("status-message");
   const setupGuideCard = document.getElementById("setup-guide-card");
@@ -53,6 +54,7 @@
         clientIdInput.value = config.CLIENT_ID || "";
         guildIdInput.value = config.GUILD_ID || "";
         rabbitmqUrlInput.value = config.RABBITMQ_URL || "amqp://guest:guest@rabbitmq:5672";
+        channelIdInput.value = config.CHANNEL_ID || "";
         
         if (!config.DISCORD_TOKEN) {
           setupGuideCard.style.display = "block";
@@ -76,6 +78,7 @@
       CLIENT_ID: clientIdInput.value.trim(),
       GUILD_ID: guildIdInput.value.trim(),
       RABBITMQ_URL: rabbitmqUrlInput.value.trim(),
+      CHANNEL_ID: channelIdInput.value.trim(),
     };
 
     try {
