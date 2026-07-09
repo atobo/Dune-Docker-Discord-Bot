@@ -272,6 +272,187 @@ async function giveItemToPlayer(characterName, itemId, quantity) {
   }
 }
 
+async function getAllCharactersWithPawnIds() {
+  const schema = process.env.DB_SCHEMA || 'dune';
+  try {
+    const res = await pool.query(`
+      SELECT player_pawn_id AS actor_id, 
+             ${schema}.decrypt_user_data(encrypted_character_name) AS name
+      FROM ${schema}.encrypted_player_state
+      WHERE encrypted_character_name IS NOT NULL
+    `);
+    return res.rows.map(r => ({ name: r.name, actorId: r.actor_id }));
+  } catch (error) {
+    console.error('[Database] Error fetching decrypted characters:', error.message);
+    return [];
+  }
+}
+
+async function grantBlueprintToPlayer(characterName, blueprint, itemType, customName) {
+  const schema = process.env.DB_SCHEMA || 'dune';
+  const client = await pool.connect();
+
+  try {
+    // 1. Resolve actor_id for character
+    const charRes = await client.query(`
+      SELECT player_pawn_id AS actor_id 
+      FROM ${schema}.encrypted_player_state 
+      WHERE LOWER(${schema}.decrypt_user_data(encrypted_character_name)) = LOWER($1)
+    `, [characterName]);
+
+    if (charRes.rows.length === 0) {
+      throw new Error(`Character "${characterName}" not found in database.`);
+    }
+    const actorId = charRes.rows[0].actor_id;
+
+    // 2. Find inventory of type 0
+    const invRes = await client.query(`
+      SELECT id FROM ${schema}.inventories 
+      WHERE actor_id = $1 AND inventory_type = 0 
+      LIMIT 1
+    `, [actorId]);
+
+    if (invRes.rows.length === 0) {
+      throw new Error(`Backpack inventory not found for character "${characterName}".`);
+    }
+    const inventoryId = invRes.rows[0].id;
+
+    // 3. Find next position_index
+    const posRes = await client.query(`
+      SELECT COALESCE(MAX(position_index) + 1, 0) AS next_pos 
+      FROM ${schema}.items 
+      WHERE inventory_id = $1
+    `, [inventoryId]);
+    const nextPos = parseInt(posRes.rows[0].next_pos) || 0;
+
+    // 4. Resolve Template ID
+    const templateId = itemType === 'backup' ? 'BaseBackupTool' : 'BuildingBlueprint_CopyDevice';
+    const name = customName || blueprint.name || "Imported Blueprint";
+
+    // Start transaction
+    await client.query('BEGIN');
+
+    // 5. Insert Item
+    const stats = {
+      FCustomizationStats: [[], {}],
+      FBuildingBlueprintItemStats: [[], { PlayerBlueprintId: "!!bbp#0", BuildingBlueprintName: name }],
+      FItemStackAndDurabilityStats: [[], { DecayedMaxDurability: 0.0 }]
+    };
+
+    const itemInsertRes = await client.query(`
+      INSERT INTO ${schema}.items (inventory_id, stack_size, position_index, template_id, quality_level, stats)
+      VALUES ($1, 1, $2, $3, 0, $4::jsonb)
+      RETURNING id
+    `, [inventoryId, nextPos, templateId, JSON.stringify(stats)]);
+
+    const itemId = itemInsertRes.rows[0].id;
+
+    // 6. Create building blueprint
+    const bpInsertRes = await client.query(`
+      INSERT INTO ${schema}.building_blueprints (item_id, player_id, building_blueprint_map)
+      VALUES ($1, NULL, '')
+      RETURNING id
+    `, [itemId]);
+
+    const blueprintId = bpInsertRes.rows[0].id;
+
+    // 7. Update Item Stats with real blueprint database ID
+    const updatedStats = { ...stats };
+    updatedStats.FBuildingBlueprintItemStats[1].PlayerBlueprintId = `!!bbp#${blueprintId}`;
+
+    await client.query(`
+      UPDATE ${schema}.items
+      SET stats = $1::jsonb
+      WHERE id = $2
+    `, [JSON.stringify(updatedStats), itemId]);
+
+    // 8. Insert Instances
+    if (blueprint.instances && blueprint.instances.length > 0) {
+      const chunks = [];
+      const chunkSize = 50;
+      for (let i = 0; i < blueprint.instances.length; i += chunkSize) {
+        chunks.push(blueprint.instances.slice(i, i + chunkSize));
+      }
+
+      for (const chunk of chunks) {
+        let valueStrings = [];
+        let params = [blueprintId];
+        let pIndex = 2;
+
+        chunk.forEach((inst, idx) => {
+          const stability = inst.provides_stability != null ? inst.provides_stability : true;
+          params.push(inst.instance_id || (idx + 1));
+          params.push(inst.building_type);
+          params.push([inst.x, inst.y, inst.z, inst.rotation]);
+          params.push(stability);
+
+          valueStrings.push(`($1, $${pIndex}, $${pIndex+1}, $${pIndex+2}::real[], true, $${pIndex+3}, 0)`);
+          pIndex += 4;
+        });
+
+        const queryText = `
+          INSERT INTO ${schema}.building_blueprint_instances
+          (building_blueprint_id, instance_id, building_type, transform, hologram, provides_stability, health)
+          VALUES ${valueStrings.join(', ')}
+        `;
+        await client.query(queryText, params);
+      }
+    }
+
+    // 9. Insert Placeables
+    if (blueprint.placeables && blueprint.placeables.length > 0) {
+      const chunks = [];
+      const chunkSize = 50;
+      for (let i = 0; i < blueprint.placeables.length; i += chunkSize) {
+        chunks.push(blueprint.placeables.slice(i, i + chunkSize));
+      }
+
+      for (const chunk of chunks) {
+        let valueStrings = [];
+        let params = [blueprintId];
+        let pIndex = 2;
+
+        chunk.forEach((pl, idx) => {
+          params.push(pl.placeable_id || (idx + 1));
+          params.push(pl.building_type);
+          params.push([pl.x, pl.y, pl.z, pl.rx ?? 0, pl.ry ?? 0, pl.rz ?? 0]);
+
+          valueStrings.push(`($1, $${pIndex}, $${pIndex+1}, $${pIndex+2}::real[], true)`);
+          pIndex += 3;
+        });
+
+        const queryText = `
+          INSERT INTO ${schema}.building_blueprint_placeables
+          (building_blueprint_id, placeable_id, building_type, transform, hologram)
+          VALUES ${valueStrings.join(', ')}
+        `;
+        await client.query(queryText, params);
+      }
+    }
+
+    // 10. Insert Pentashields
+    if (blueprint.pentashields && blueprint.pentashields.length > 0) {
+      for (const ps of blueprint.pentashields) {
+        const s = ps.scale || [1, 1, 1];
+        await client.query(`
+          INSERT INTO ${schema}.building_blueprint_pentashields (building_blueprint_id, placeable_id, scale)
+          VALUES ($1, $2, $3::smallint[])
+        `, [blueprintId, ps.placeable_id ?? 0, s]);
+      }
+    }
+
+    await client.query('COMMIT');
+    console.log(`[Database] Successfully granted blueprint as ${templateId} directly to player "${characterName}" (Blueprint ID: ${blueprintId})`);
+    return { success: true, blueprintId, itemId };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error(`[Database] Error in grantBlueprintToPlayer for character "${characterName}":`, error.message);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   pool,
   testConnection,
@@ -279,5 +460,7 @@ module.exports = {
   getAllPlayers,
   discoverSchema,
   getFuncomToCharacterMap,
-  giveItemToPlayer
+  giveItemToPlayer,
+  getAllCharactersWithPawnIds,
+  grantBlueprintToPlayer
 };
