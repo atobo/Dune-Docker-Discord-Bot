@@ -32,8 +32,23 @@
         console.warn("Running outside of Dune Console. Using mock config.");
         return;
       }
-      // Assuming a standard bridge command for reading addon data
-      const config = await window.DuneAddon.request("addon.data.read");
+      // Read config from the database
+      let config = null;
+      try {
+        const result = await window.DuneAddon.request("database.query", {
+          query: "SELECT config_value FROM dune.discord_bot_config WHERE config_key = $1",
+          params: ["main"]
+        });
+        
+        if (result && result.length > 0 && result[0].config_value) {
+          config = typeof result[0].config_value === 'string' 
+            ? JSON.parse(result[0].config_value) 
+            : result[0].config_value;
+        }
+      } catch (dbErr) {
+        console.warn("Could not read config from database (table might not exist yet).");
+      }
+
       if (config) {
         tokenInput.value = config.DISCORD_TOKEN || "";
         clientIdInput.value = config.CLIENT_ID || "";
@@ -69,7 +84,27 @@
         console.warn("Running outside of Dune Console. Mock save successful.");
         showMessage("Configuration saved (mock).");
       } else {
-        await window.DuneAddon.request("addon.data.write", { data: newConfig });
+        // Ensure table exists
+        await window.DuneAddon.request("database.execute", {
+          query: `
+            CREATE TABLE IF NOT EXISTS dune.discord_bot_config (
+              config_key VARCHAR(255) PRIMARY KEY,
+              config_value JSONB
+            )
+          `,
+          params: []
+        });
+
+        // Upsert the configuration
+        await window.DuneAddon.request("database.execute", {
+          query: `
+            INSERT INTO dune.discord_bot_config (config_key, config_value)
+            VALUES ($1, $2::jsonb)
+            ON CONFLICT (config_key) DO UPDATE SET config_value = $2::jsonb
+          `,
+          params: ["main", JSON.stringify(newConfig)]
+        });
+
         showMessage("Configuration saved successfully.");
       }
     } catch (err) {

@@ -2,17 +2,7 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 
-// Try loading addon-data config
-const addonConfigPath = '/app/addon-data/config.json';
-if (fs.existsSync(addonConfigPath)) {
-  try {
-    const addonConfig = JSON.parse(fs.readFileSync(addonConfigPath, 'utf8'));
-    Object.assign(process.env, addonConfig);
-    console.log('[Init] Loaded configuration from RedBlink Addon storage.');
-  } catch (err) {
-    console.error('[Init] Failed to parse addon config:', err.message);
-  }
-}
+// Configuration is now loaded from the database during bot startup.
 
 const { Client, GatewayIntentBits, EmbedBuilder, ActivityType, MessageFlags } = require('discord.js');
 const database = require('./database');
@@ -715,11 +705,6 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-const API_PORT = process.env.API_PORT || 3005;
-server.listen(API_PORT, () => {
-  console.log(`[API] Server is listening on port ${API_PORT}`);
-});
-
 // Handle graceful shutdown
 process.on('SIGINT', () => {
   console.log('[System] Shutting down bot...');
@@ -731,7 +716,35 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
-client.login(process.env.DISCORD_TOKEN);
+async function startBot() {
+  console.log('[Init] Connecting to database to fetch configuration...');
+  try {
+    const res = await database.pool.query("SELECT config_value FROM dune.discord_bot_config WHERE config_key = $1", ["main"]);
+    if (res.rows.length > 0 && res.rows[0].config_value) {
+      const dbConfig = typeof res.rows[0].config_value === 'string' ? JSON.parse(res.rows[0].config_value) : res.rows[0].config_value;
+      Object.assign(process.env, dbConfig);
+      console.log('[Init] Successfully loaded configuration from Postgres Database.');
+    } else {
+      console.warn('[Init] No configuration found in database. Using environment variables.');
+    }
+  } catch (err) {
+    console.warn('[Init] Database configuration table not found or unavailable. Using environment variables. Error:', err.message);
+  }
+
+  if (!process.env.DISCORD_TOKEN) {
+    console.error('[Init] ERROR: No DISCORD_TOKEN provided. The bot cannot start! Please configure the addon in the Dune Console.');
+    return;
+  }
+
+  const API_PORT = process.env.API_PORT || 3005;
+  server.listen(API_PORT, () => {
+    console.log(`[API] Server is listening on port ${API_PORT}`);
+  });
+
+  client.login(process.env.DISCORD_TOKEN);
+}
+
+startBot();
 
 /**
  * Executes the battlegroup status command inside the VM host.
