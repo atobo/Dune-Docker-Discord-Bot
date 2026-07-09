@@ -1,5 +1,7 @@
 const { exec } = require('child_process');
 const crypto = require('crypto');
+const { Client } = require('pg');
+require('dotenv').config();
 
 // Configuration
 const mapName = process.argv[2] || 'Abbir';
@@ -10,6 +12,7 @@ const containerName = 'dune-rmq-game';
 // Redblink's synthetic persona
 const senderFuncomId = "Server#4242";
 const senderHexFlsId = "5E121CE000000001";
+const accountId = "9000002";
 
 // Timestamps
 const date = new Date();
@@ -23,15 +26,37 @@ const tests = [
     type: "TextChat",
     outerContentKey: "content",
     text: `[Exact] ${message}`
-  },
-  {
-    name: "2. Exact Whisper Match (UUID + Uppercase Content)",
-    msgId: `web-map-chat-${crypto.randomUUID()}`,
-    type: "ECourierMessageType::TextChat",
-    outerContentKey: "Content",
-    text: `[Upper] ${message}`
   }
 ];
+
+async function ensurePersona(client) {
+  console.log("Upserting Server#4242 persona into database...");
+  await client.query(`
+    INSERT INTO dune.accounts (id, "user", funcom_id, display_name, name)
+    VALUES ($1, $2, $3, 'Server', 'Server')
+    ON CONFLICT (id) DO UPDATE SET "user" = $2, funcom_id = $3
+  `, [accountId, senderHexFlsId, senderFuncomId]);
+
+  await client.query(`
+    INSERT INTO dune.player_state (account_id, character_name, online_status)
+    VALUES ($1, 'Server', 'Offline'::dune.playerconnectionstatus)
+    ON CONFLICT (account_id) DO UPDATE SET online_status = 'Offline'::dune.playerconnectionstatus
+  `, [accountId]);
+
+  try {
+    // Attempt encrypted table updates as well if they exist
+    await client.query(`
+      INSERT INTO dune.encrypted_player_state (account_id, last_avatar_activity, online_status)
+      VALUES ($1, to_timestamp(0), 'Offline'::dune.playerconnectionstatus)
+      ON CONFLICT (account_id) DO UPDATE SET last_avatar_activity = to_timestamp(0), online_status = 'Offline'::dune.playerconnectionstatus
+    `, [accountId]);
+  } catch (e) {
+    // Ignore errors for encrypted tables
+  }
+  
+  // Wait a moment for game server to sync the DB change
+  await new Promise(r => setTimeout(r, 1000));
+}
 
 async function runTest(testDef) {
   console.log(`\n=== Running Test: ${testDef.name} ===`);
@@ -70,7 +95,7 @@ Exchange = base64:decode(<<"${exchangeB64}">>),
 XName = rabbit_misc:r(<<"/">>, exchange, Exchange),
 X = rabbit_exchange:lookup_or_die(XName),
 MsgId = list_to_binary("${testDef.msgId}"),
-P = {list_to_atom("P_basic"), <<"Content">>, undefined, [], undefined, undefined, undefined, undefined, undefined, MsgId, undefined, <<"text_chat">>, Sender, <<"fls_backend">>, undefined},
+P = {list_to_atom("P_basic"), <<"content">>, undefined, [], undefined, undefined, undefined, undefined, undefined, MsgId, undefined, <<"text_chat">>, Sender, <<"fls_backend">>, undefined},
 Content = rabbit_basic:build_content(P, Outer),
 {ok, Msg} = rabbit_basic:message(XName, Routing, Content),
 Result = rabbit_queue_type:publish_at_most_once(X, Msg),
@@ -86,12 +111,22 @@ io:format("publish=~p exchange=chat.map routing=~s~n", [Result, Routing]).
       } else {
         console.log(`Success: ${stdout.trim()}`);
       }
-      setTimeout(resolve, 2000); // Wait 2s between tests
+      setTimeout(resolve, 2000); // Wait 2s
     });
   });
 }
 
 async function main() {
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  try {
+    await client.connect();
+    await ensurePersona(client);
+  } catch (e) {
+    console.log("DB setup failed, proceeding anyway:", e.message);
+  } finally {
+    await client.end();
+  }
+
   console.log(`Sending to Map: ${mapName}`);
   for (const test of tests) {
     await runTest(test);
