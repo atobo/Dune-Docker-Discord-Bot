@@ -468,11 +468,13 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     else if (commandName === 'chat') {
-      await interaction.deferReply();
+      await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
       const message = interaction.options.getString('message');
+      const authorName = interaction.member ? interaction.member.displayName : interaction.user.username;
+      const formattedMessage = `[Discord] ${authorName}: ${message}`;
       try {
-        await rabbitmq.sendServerCommand('chat', message);
-        await interaction.editReply({ content: `✅ Sent chat message to game: "${message}"` });
+        await rabbitmq.sendServerCommand('chat', formattedMessage);
+        await interaction.editReply({ content: `✅ Sent message to game server: "${formattedMessage}"` });
       } catch (error) {
         await interaction.editReply({ content: `❌ Failed to send chat message: ${error.message}` });
       }

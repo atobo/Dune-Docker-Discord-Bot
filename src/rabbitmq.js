@@ -161,7 +161,7 @@ async function sendServerCommand(commandName, commandArgs = '') {
           m_FuncomIdFrom: senderFuncomId,
           m_UserNameTo: "",
           m_Message: {
-            m_UnlocalizedMessage: `[Discord] ${message}`,
+            m_UnlocalizedMessage: message,
             m_LocalizedMessage: {
               m_TableId: "",
               m_Key: "",
