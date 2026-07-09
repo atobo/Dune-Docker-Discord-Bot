@@ -520,12 +520,11 @@ async function constructBlueprintAtPlayer(characterName, blueprint) {
 
     // 5. Insert Building Actor
     const buildingClass = '/Game/Dune/Systems/Building/Pieces/BP_DuneBuildingBase.BP_DuneBuildingBase_C';
-    const buildingTransformStr = `((${px.toFixed(4)},${py.toFixed(4)},${pz.toFixed(4)}),(0,0,0,1))`;
 
     await client.query(`
       INSERT INTO ${schema}.actors (id, class, map, transform, partition_id, dimension_index, gas_attributes, properties, owner_account_id)
-      VALUES ($1, $2, $3, $4::dune.transform, $5, $6, '{}'::jsonb, '{}'::jsonb, NULL)
-    `, [buildingId, buildingClass, map, buildingTransformStr, partition_id, dimension_index]);
+      VALUES ($1, $2, $3, ROW(ROW($4, $5, $6)::dune.vector, ROW(0.0, 0.0, 0.0, 1.0)::dune.quaternion)::dune.transform, $7, $8, '{}'::jsonb, '{}'::jsonb, NULL)
+    `, [buildingId, buildingClass, map, px, py, pz, partition_id, dimension_index]);
 
     // 6. Insert Building record
     await client.query(`
