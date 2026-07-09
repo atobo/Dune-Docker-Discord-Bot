@@ -22,18 +22,19 @@ function getAuthToken() {
   return BUILTIN_COMMAND_AUTH_TOKEN;
 }
 
-let cachedFlsData = null;
-let lastFlsDataFetch = 0;
+let cachedOnlineFlsData = null;
+let lastOnlineFetch = 0;
 
 /**
- * Fetches the FLS Hex ID and Funcom ID for the 'Discord' character from Postgres.
- * The Game server requires a real, database-backed FLS ID as the AMQP user_id for Map Chat.
- * We cache it for 5 minutes to avoid hammering the database on every message.
+ * Fetches the FLS Hex ID and Funcom ID of any currently ONLINE player from Postgres.
+ * The Game server strictly requires the AMQP user_id to belong to a player who is currently
+ * active on the map, otherwise the Map Chat packet is silently dropped.
+ * Since we spoof the display name, it doesn't matter which online player we use.
  */
-async function getDiscordFlsData() {
-  const cacheTtlMs = 5 * 60 * 1000; // 5 minutes
-  if (cachedFlsData && (Date.now() - lastFlsDataFetch < cacheTtlMs)) {
-    return cachedFlsData;
+async function getOnlineFlsData() {
+  const cacheTtlMs = 30 * 1000; // 30 seconds (keep short so we don't use disconnected players)
+  if (cachedOnlineFlsData && (Date.now() - lastOnlineFetch < cacheTtlMs)) {
+    return cachedOnlineFlsData;
   }
 
   const client = new Client({
@@ -46,33 +47,24 @@ async function getDiscordFlsData() {
 
   try {
     await client.connect();
-    // Look for a character whose name starts with "Discord#"
+    // Look for any character currently marked as Online
     const res = await client.query(`
-      SELECT ac."user", convert_from(e.encrypted_funcom_id, 'UTF8') as funcom_id FROM dune.accounts ac 
+      SELECT ac."user", convert_from(e.encrypted_funcom_id, 'UTF8') as funcom_id 
+      FROM dune.accounts ac 
       JOIN dune.encrypted_accounts e ON e.id = ac.id 
-      WHERE convert_from(e.encrypted_funcom_id, 'UTF8') LIKE 'Discord#%' LIMIT 1
+      JOIN dune.player_state ps ON ps.account_id = ac.id
+      WHERE ps.online_status = 'Online' 
+      LIMIT 1
     `);
     
     if (res.rows.length > 0) {
-      cachedFlsData = { flsId: res.rows[0].user, funcomId: res.rows[0].funcom_id };
-      lastFlsDataFetch = Date.now();
-      console.log(`[PG] Successfully resolved Discord bot character: ${cachedFlsData.funcomId}`);
+      cachedOnlineFlsData = { flsId: res.rows[0].user, funcomId: res.rows[0].funcom_id };
+      lastOnlineFetch = Date.now();
+      console.log(`[PG] Successfully resolved an online player for chat routing: ${cachedOnlineFlsData.funcomId}`);
     } else {
-      // Fallback: Just grab the first available user so it doesn't hard-crash
-      console.warn(`[PG] Warning: Character 'Discord' not found! Falling back to any valid user.`);
-      const fbRes = await client.query(`
-        SELECT ac."user", convert_from(e.encrypted_funcom_id, 'UTF8') as funcom_id FROM dune.accounts ac 
-        JOIN dune.encrypted_accounts e ON e.id = ac.id 
-        LIMIT 1
-      `);
-      if (fbRes.rows.length > 0) {
-        cachedFlsData = { flsId: fbRes.rows[0].user, funcomId: fbRes.rows[0].funcom_id };
-        lastFlsDataFetch = Date.now();
-      } else {
-        throw new Error('No users found in database to act as chat sender.');
-      }
+      throw new Error('No players are currently online. Map Chat requires at least one active player to route the message.');
     }
-    return cachedFlsData;
+    return cachedOnlineFlsData;
   } catch (err) {
     console.error('[PG] Error fetching FLS ID:', err.message);
     throw err;
@@ -137,6 +129,9 @@ async function sendServerCommand(commandName, commandArgs = '') {
     console.log(`[Command] Sending direct chat message: "${message}" to exchange: chat.map`);
     if (useCliFallback) {
       
+      // We must borrow an active, online player's identity to pass the server's online presence check
+      const senderData = await getOnlineFlsData();
+
       const inner = {
         m_Id: msgId,
         m_ChannelType: "Map",
@@ -146,7 +141,7 @@ async function sendServerCommand(commandName, commandArgs = '') {
           m_Key: "",
           m_UnlocalizedName: "Discord Bot"
         },
-        m_FuncomIdFrom: 'Server#0001',
+        m_FuncomIdFrom: senderData.funcomId,
         m_UserNameTo: "",
         m_Message: {
           m_UnlocalizedMessage: message,
@@ -174,7 +169,7 @@ async function sendServerCommand(commandName, commandArgs = '') {
       const outerB64 = Buffer.from(payloadString, 'utf8').toString('base64');
       const routingB64 = Buffer.from(routingKey, 'utf8').toString('base64');
       const exchangeB64 = Buffer.from(exchange, 'utf8').toString('base64');
-      const senderFuncomIdB64 = Buffer.from('A5C0DE5E12A00001', 'utf8').toString('base64'); // Using hardcoded Server Hex FLS ID
+      const senderFuncomIdB64 = Buffer.from(senderData.flsId, 'utf8').toString('base64');
 
       const erlangScript = `
 Outer = base64:decode(<<"${outerB64}">>),
