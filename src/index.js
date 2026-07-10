@@ -1097,6 +1097,29 @@ const server = http.createServer(async (req, res) => {
                   SELECT 1 FROM dune.encrypted_player_state eps WHERE eps.player_controller_id = inv.actor_id
               )
               AND act.class NOT LIKE '%Thrall%'
+              AND NOT (
+                  i.template_id LIKE 'Emote_%' 
+                  OR i.template_id LIKE 'Stillsuit_%' 
+                  OR i.template_id LIKE 'Combat_%'
+                  OR i.template_id LIKE '%Rifle%'
+                  OR i.template_id LIKE '%Scattergun%'
+                  OR i.template_id LIKE '%Shotgun%'
+                  OR i.template_id LIKE '%Tool%'
+                  OR i.template_id LIKE '%Backup%'
+                  OR i.template_id LIKE '%Light%'
+                  OR i.template_id LIKE '%Belt%'
+                  OR i.template_id LIKE '%Scythe%'
+                  OR i.template_id LIKE '%Key%'
+                  OR i.template_id LIKE '%Corpse%'
+                  OR i.template_id LIKE 'Radiation_Suit%'
+                  OR i.template_id LIKE 'UniqueAr%'
+                  OR i.template_id LIKE 'Holtzman%'
+                  OR i.template_id LIKE 'PowerPack%'
+                  OR i.template_id LIKE 'healthpack%'
+                  OR i.template_id = 'FullSuspensorBelt'
+                  OR i.template_id = 'JourneyShieldDissembler'
+                  OR i.template_id LIKE 'Contract%'
+              )
           `, [multiplier, oldMultiplier]);
         }
 
@@ -1207,7 +1230,29 @@ async function startBot() {
           JOIN dune.actors act ON inv.actor_id = act.id
           WHERE inv.id = NEW.inventory_id;
 
-          IF is_system_container AND multiplier > 1 THEN
+          IF is_system_container AND multiplier > 1 AND NOT (
+              NEW.template_id LIKE 'Emote_%' 
+              OR NEW.template_id LIKE 'Stillsuit_%' 
+              OR NEW.template_id LIKE 'Combat_%'
+              OR NEW.template_id LIKE '%Rifle%'
+              OR NEW.template_id LIKE '%Scattergun%'
+              OR NEW.template_id LIKE '%Shotgun%'
+              OR NEW.template_id LIKE '%Tool%'
+              OR NEW.template_id LIKE '%Backup%'
+              OR NEW.template_id LIKE '%Light%'
+              OR NEW.template_id LIKE '%Belt%'
+              OR NEW.template_id LIKE '%Scythe%'
+              OR NEW.template_id LIKE '%Key%'
+              OR NEW.template_id LIKE '%Corpse%'
+              OR NEW.template_id LIKE 'Radiation_Suit%'
+              OR NEW.template_id LIKE 'UniqueAr%'
+              OR NEW.template_id LIKE 'Holtzman%'
+              OR NEW.template_id LIKE 'PowerPack%'
+              OR NEW.template_id LIKE 'healthpack%'
+              OR NEW.template_id = 'FullSuspensorBelt'
+              OR NEW.template_id = 'JourneyShieldDissembler'
+              OR NEW.template_id LIKE 'Contract%'
+          ) THEN
               NEW.stack_size := NEW.stack_size * multiplier;
           END IF;
 
