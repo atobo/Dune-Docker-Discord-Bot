@@ -1,4 +1,5 @@
 const { Pool } = require('pg');
+const http = require('http');
 
 const pool = new Pool({
   host: process.env.DB_HOST || '127.0.0.1',
@@ -454,9 +455,87 @@ async function grantBlueprintToPlayer(characterName, blueprint, itemType, custom
   }
 }
 
+function dockerRequest(method, path) {
+  return new Promise((resolve, reject) => {
+    const req = http.request({
+      socketPath: '/var/run/docker.sock',
+      method: method,
+      path: path
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          try {
+            resolve(data ? JSON.parse(data) : true);
+          } catch (e) {
+            resolve(data);
+          }
+        } else if (res.statusCode === 304) {
+          resolve(true); // Container already stopped/started
+        } else {
+          reject(new Error(`Docker status ${res.statusCode}: ${data}`));
+        }
+      });
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+async function manageServerContainers(action) {
+  try {
+    const containers = await dockerRequest('GET', '/containers/json?all=true');
+    const orchestrators = [];
+    const mapServers = [];
+    
+    containers.forEach(c => {
+      const name = c.Names[0] || '';
+      const image = c.Image || '';
+      
+      // Match orchestrator / autoscaler containers
+      if (name.includes('orchestrator') || name.includes('autoscaler')) {
+        orchestrators.push(c.Id);
+      }
+      
+      // Match active game servers (excluding overmap, director, router, gateway)
+      if (image.includes('seabass-server') && 
+          !image.includes('gateway') && 
+          !image.includes('director') && 
+          !image.includes('text-router') && 
+          !name.includes('overmap')) {
+        mapServers.push(c.Id);
+      }
+    });
+
+    if (action === 'stop') {
+      console.log(`[Docker] Temporarily stopping ${orchestrators.length} orchestrator/autoscaler containers...`);
+      for (const id of orchestrators) {
+        await dockerRequest('POST', `/containers/${id}/stop?t=5`);
+      }
+      console.log(`[Docker] Temporarily stopping ${mapServers.length} active map server containers...`);
+      for (const id of mapServers) {
+        await dockerRequest('POST', `/containers/${id}/stop?t=5`);
+      }
+    } else if (action === 'start') {
+      console.log(`[Docker] Resuming ${mapServers.length} active map server containers...`);
+      for (const id of mapServers) {
+        await dockerRequest('POST', `/containers/${id}/start`);
+      }
+      console.log(`[Docker] Resuming ${orchestrators.length} orchestrator/autoscaler containers...`);
+      for (const id of orchestrators) {
+        await dockerRequest('POST', `/containers/${id}/start`);
+      }
+    }
+  } catch (err) {
+    console.error(`[Docker] Failed to ${action} containers:`, err.message);
+  }
+}
+
 async function constructBlueprintAtPlayer(characterName, blueprint, offsetX = 0, offsetY = 0, offsetZ = 0) {
   const schema = process.env.DB_SCHEMA || 'dune';
   const client = await pool.connect();
+  let stoppedContainers = false;
 
   try {
     // 1. Resolve player pawn ID
@@ -523,6 +602,10 @@ async function constructBlueprintAtPlayer(characterName, blueprint, offsetX = 0,
     const cx = (minX + maxX) / 2 || 0;
     const cy = (minY + maxY) / 2 || 0;
     const cz = minZ !== Infinity ? minZ : 0;
+
+    // Stop active map server containers before database operations
+    await manageServerContainers('stop');
+    stoppedContainers = true;
 
     // Start transaction
     await client.query('BEGIN');
@@ -626,6 +709,9 @@ async function constructBlueprintAtPlayer(characterName, blueprint, offsetX = 0,
     throw error;
   } finally {
     client.release();
+    if (stoppedContainers) {
+      await manageServerContainers('start');
+    }
   }
 }
 
