@@ -27,6 +27,9 @@
     setTimeout(() => { statusMsg.textContent = ""; }, 5000);
   }
 
+  const placeholderToken = "••••••••••••";
+  let tokenConfigured = false;
+
   async function loadConfig() {
     try {
       if (window.parent === window) {
@@ -49,14 +52,25 @@
         console.warn("Could not read config from database (table might not exist yet).");
       }
 
-      if (config) {
-        tokenInput.value = config.DISCORD_TOKEN || "";
-        clientIdInput.value = config.CLIENT_ID || "";
-        guildIdInput.value = config.GUILD_ID || "";
-        rabbitmqUrlInput.value = config.RABBITMQ_URL || "amqp://guest:guest@rabbitmq:5672";
-        channelIdInput.value = config.CHANNEL_ID || "";
+      // Check token status from backend
+      try {
+        const res = await fetch(`http://${window.location.hostname}:3005/api/config`);
+        const data = await res.json();
+        if (data && data.success && data.configured) {
+          tokenConfigured = true;
+        }
+      } catch (err) {
+        console.warn("Failed to contact bot backend to check token status. Assuming not configured.", err);
+      }
+
+      if (config || tokenConfigured) {
+        tokenInput.value = tokenConfigured ? placeholderToken : "";
+        clientIdInput.value = (config && config.CLIENT_ID) || "";
+        guildIdInput.value = (config && config.GUILD_ID) || "";
+        rabbitmqUrlInput.value = (config && config.RABBITMQ_URL) || "amqp://guest:guest@rabbitmq:5672";
+        channelIdInput.value = (config && config.CHANNEL_ID) || "";
         
-        if (!config.DISCORD_TOKEN) {
+        if (!tokenConfigured) {
           setupGuideCard.style.display = "block";
         } else {
           showGuideBtn.style.display = "inline-block";
@@ -74,12 +88,14 @@
     saveBtn.disabled = true;
     
     const newConfig = {
-      DISCORD_TOKEN: tokenInput.value.trim(),
       CLIENT_ID: clientIdInput.value.trim(),
       GUILD_ID: guildIdInput.value.trim(),
       RABBITMQ_URL: rabbitmqUrlInput.value.trim(),
       CHANNEL_ID: channelIdInput.value.trim(),
     };
+
+    const tokenValue = tokenInput.value.trim();
+    const shouldSaveToken = tokenValue && tokenValue !== placeholderToken;
 
     try {
       if (window.parent === window) {
@@ -105,6 +121,23 @@
             ON CONFLICT (config_key) DO UPDATE SET config_value = '${configStr}'::jsonb
           `
         });
+
+        // Save token to backend if it was modified
+        if (shouldSaveToken) {
+          const res = await fetch(`http://${window.location.hostname}:3005/api/config`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ token: tokenValue })
+          });
+          const data = await res.json();
+          if (!data || !data.success) {
+            throw new Error(data.error || "Failed to save Discord Bot Token to host storage.");
+          }
+          tokenConfigured = true;
+          tokenInput.value = placeholderToken;
+        }
 
         showMessage("Configuration saved successfully.");
       }

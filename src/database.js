@@ -471,6 +471,14 @@ async function constructBlueprintAtPlayer(characterName, blueprint, offsetX = 0,
     }
     const actorId = charRes.rows[0].actor_id;
 
+    // Fetch player character entity ID
+    const entityRes = await client.query(`
+      SELECT entity_id 
+      FROM ${schema}.actor_fgl_entities 
+      WHERE actor_id = $1 AND slot_name = 'DuneCharacter'
+    `, [actorId]);
+    const ownerEntityId = entityRes.rows.length > 0 ? entityRes.rows[0].entity_id : null;
+
     // 2. Fetch player location and map details
     const playerActorRes = await client.query(`
       SELECT transform::text, map, partition_id, dimension_index 
@@ -570,9 +578,10 @@ async function constructBlueprintAtPlayer(characterName, blueprint, offsetX = 0,
           params.push(inst.instance_id || globalInstanceId++);
           params.push(inst.building_type);
           params.push([wx, wy, wz, 0.0, 0.0, qz, qw]);
+          params.push(ownerEntityId);
 
-          valueStrings.push(`($1, $${pIndex}, $${pIndex+1}, $${pIndex+2}::real[], NULL, 0, 100.0, 0.0, 0, 0, 0, 0.0)`);
-          pIndex += 3;
+          valueStrings.push(`($1, $${pIndex}, $${pIndex+1}, $${pIndex+2}::real[], $${pIndex+3}, 0, 100.0, 0.0, 0, 0, 0, 0.0)`);
+          pIndex += 4;
         });
 
         const queryText = `
