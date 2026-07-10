@@ -1119,8 +1119,13 @@ const server = http.createServer(async (req, res) => {
                   OR i.template_id = 'JourneyShieldDissembler'
                   OR i.template_id LIKE 'Contract%'
               )
-          `, [multiplier, oldMultiplier]);
         }
+
+        sendJsonResponse(res, 200, { success: true, multiplier });
+      } catch (err) {
+        sendJsonResponse(res, 500, { success: false, error: err.message });
+      }
+    }
 
     else if (url === '/api/settings/gameplay' && method === 'GET') {
       try {
