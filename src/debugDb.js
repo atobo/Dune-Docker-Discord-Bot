@@ -13,7 +13,7 @@ async function main() {
   const schema = process.env.DB_SCHEMA || 'dune';
   console.log(`Connecting to DB to inspect building 144...`);
   try {
-    const actorRes = await pool.query(`SELECT id, class, map, transform::text, partition_id, dimension_index, serial FROM ${schema}.actors WHERE id = 144`);
+    const actorRes = await pool.query(`SELECT id, class, map, transform::text, partition_id, dimension_index, serial, owner_account_id, properties::text, gas_attributes::text FROM ${schema}.actors WHERE id = 144`);
     console.log('\n================ ACTOR 144 ================');
     console.log(JSON.stringify(actorRes.rows, null, 2));
 
