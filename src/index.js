@@ -1017,7 +1017,9 @@ const server = http.createServer(async (req, res) => {
     else if (url === '/api/loot/queue/apply' && method === 'POST') {
       try {
         if (lootQueue.length === 0) {
-          sendJsonResponse(res, 400, { success: false, error: 'Queue is empty' });
+          console.log('[LootQueue] Force-apply called with empty queue. Triggering survival restart directly...');
+          const restartResult = await executeDuneRestart('survival');
+          sendJsonResponse(res, 200, { success: true, message: 'Survival server restarted.', restartResult });
           return;
         }
 
