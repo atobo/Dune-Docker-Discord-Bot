@@ -818,7 +818,7 @@ const server = http.createServer(async (req, res) => {
 
     else if (url === '/api/blueprint/construct' && method === 'POST') {
       const body = await readRequestBody(req);
-      const { characterName, blueprint } = body;
+      const { characterName, blueprint, offsetX, offsetY, offsetZ } = body;
 
       if (!characterName || !blueprint) {
         sendJsonResponse(res, 400, { success: false, error: 'Missing characterName or blueprint in request body' });
@@ -836,7 +836,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      const result = await database.constructBlueprintAtPlayer(characterName, blueprint);
+      const result = await database.constructBlueprintAtPlayer(characterName, blueprint, parseFloat(offsetX) || 0, parseFloat(offsetY) || 0, parseFloat(offsetZ) || 0);
       sendJsonResponse(res, 200, {
         success: true,
         ...result

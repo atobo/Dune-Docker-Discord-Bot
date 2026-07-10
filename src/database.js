@@ -454,7 +454,7 @@ async function grantBlueprintToPlayer(characterName, blueprint, itemType, custom
   }
 }
 
-async function constructBlueprintAtPlayer(characterName, blueprint) {
+async function constructBlueprintAtPlayer(characterName, blueprint, offsetX = 0, offsetY = 0, offsetZ = 0) {
   const schema = process.env.DB_SCHEMA || 'dune';
   const client = await pool.connect();
 
@@ -493,6 +493,11 @@ async function constructBlueprintAtPlayer(characterName, blueprint) {
     const py = locParts[1];
     const pz = locParts[2];
 
+    // Apply offsets to get final building anchor location
+    const ax = px + offsetX;
+    const ay = py + offsetY;
+    const az = pz + offsetZ;
+
     // 3. Find blueprint center
     let minX = Infinity, maxX = -Infinity;
     let minY = Infinity, maxY = -Infinity;
@@ -530,7 +535,7 @@ async function constructBlueprintAtPlayer(characterName, blueprint) {
     await client.query(`
       INSERT INTO ${schema}.actors (id, class, map, transform, partition_id, dimension_index, gas_attributes, properties, owner_account_id, serial)
       VALUES ($1, $2, $3, ROW(ROW($4, $5, $6)::dune.vector, ROW(0.0, 0.0, 0.0, 1.0)::dune.quaternion)::dune.transform, $7, $8, '{}'::jsonb, $9::jsonb, NULL, 1)
-    `, [buildingId, buildingClass, map, px, py, pz, partition_id, dimension_index, JSON.stringify(buildingProperties)]);
+    `, [buildingId, buildingClass, map, ax, ay, az, partition_id, dimension_index, JSON.stringify(buildingProperties)]);
 
     // 6. Insert Building record
     await client.query(`
@@ -554,9 +559,9 @@ async function constructBlueprintAtPlayer(characterName, blueprint) {
         let pIndex = 2;
 
         chunk.forEach((inst) => {
-          const wx = px + (inst.x - cx);
-          const wy = py + (inst.y - cy);
-          const wz = pz + (inst.z - cz);
+          const wx = ax + (inst.x - cx);
+          const wy = ay + (inst.y - cy);
+          const wz = az + (inst.z - cz);
 
           const rad = (inst.rotation * Math.PI) / 360;
           const qz = Math.sin(rad);
@@ -580,8 +585,8 @@ async function constructBlueprintAtPlayer(characterName, blueprint) {
     }
 
     await client.query('COMMIT');
-    console.log(`[Database] Instantly constructed building ID ${buildingId} at player "${characterName}" location: (${px}, ${py}, ${pz})`);
-    return { success: true, buildingId, x: px, y: py, z: pz };
+    console.log(`[Database] Instantly constructed building ID ${buildingId} at player "${characterName}" location + offset: (${ax}, ${ay}, ${az})`);
+    return { success: true, buildingId, x: ax, y: ay, z: az };
   } catch (error) {
     await client.query('ROLLBACK');
     console.error(`[Database] Error in constructBlueprintAtPlayer:`, error.message);
