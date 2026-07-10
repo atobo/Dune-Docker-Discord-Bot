@@ -1122,7 +1122,64 @@ const server = http.createServer(async (req, res) => {
           `, [multiplier, oldMultiplier]);
         }
 
-        sendJsonResponse(res, 200, { success: true, multiplier });
+    else if (url === '/api/settings/gameplay' && method === 'GET') {
+      try {
+        const { exec } = require('child_process');
+        exec("docker exec redblink-dune-docker-console python3 /repo/runtime/scripts/usersettings.py map-values Survival_1", (error, stdout, stderr) => {
+          if (error) {
+            console.error('[Settings] Failed to fetch settings:', error.message, stderr);
+            sendJsonResponse(res, 500, { success: false, error: 'Failed to fetch settings from server' });
+            return;
+          }
+          
+          const lines = (stdout || '').split('\n');
+          let xp_multiplier = 1.0;
+          let harvest_multiplier = 1.0;
+          
+          for (const line of lines) {
+            const parts = line.split('\t');
+            if (parts.length >= 2) {
+              const key = parts[0].trim();
+              const val = parseFloat(parts[1].trim());
+              if (key === 'global_xp_multiplier') {
+                xp_multiplier = isNaN(val) ? 1.0 : val;
+              } else if (key === 'global_harvest_amount_multiplier') {
+                harvest_multiplier = isNaN(val) ? 1.0 : val;
+              }
+            }
+          }
+          
+          sendJsonResponse(res, 200, { success: true, xp_multiplier, harvest_multiplier });
+        });
+      } catch (err) {
+        sendJsonResponse(res, 500, { success: false, error: err.message });
+      }
+    }
+
+    else if (url === '/api/settings/gameplay' && method === 'POST') {
+      try {
+        const body = await readRequestBody(req);
+        const xp = parseFloat(body.xp_multiplier);
+        const harvest = parseFloat(body.harvest_multiplier);
+        
+        if (isNaN(xp) || xp < 0.1 || isNaN(harvest) || harvest < 0.1) {
+          sendJsonResponse(res, 400, { success: false, error: 'Invalid settings values' });
+          return;
+        }
+        
+        const { exec } = require('child_process');
+        const setXpCmd = `docker exec redblink-dune-docker-console python3 /repo/runtime/scripts/usersettings.py map-set Survival_1 global_xp_multiplier ${xp}`;
+        const setHarvestCmd = `docker exec redblink-dune-docker-console python3 /repo/runtime/scripts/usersettings.py map-set Survival_1 global_harvest_amount_multiplier ${harvest}`;
+        const materializeCmd = `docker exec redblink-dune-docker-console python3 /repo/runtime/scripts/usersettings.py materialize-current`;
+        
+        exec(`${setXpCmd} && ${setHarvestCmd} && ${materializeCmd}`, (error, stdout, stderr) => {
+          if (error) {
+            console.error('[Settings] Failed to save gameplay settings:', error.message, stderr);
+            sendJsonResponse(res, 500, { success: false, error: 'Failed to apply settings on server' });
+            return;
+          }
+          sendJsonResponse(res, 200, { success: true, xp_multiplier: xp, harvest_multiplier: harvest });
+        });
       } catch (err) {
         sendJsonResponse(res, 500, { success: false, error: err.message });
       }
