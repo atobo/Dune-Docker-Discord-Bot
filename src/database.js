@@ -527,9 +527,12 @@ async function constructBlueprintAtPlayer(characterName, blueprint, offsetX = 0,
     // Start transaction
     await client.query('BEGIN');
 
-    // 4. Generate new building actor ID
+    // 4. Generate new building actor ID and entity ID
     const idRes = await client.query(`SELECT nextval('${schema}.actors_id_seq') AS id`);
     const buildingId = idRes.rows[0].id;
+
+    const fglRes = await client.query(`SELECT nextval('${schema}.character_transfer_fgl_entities_entity_id_seq') AS entity_id`);
+    const buildingEntityId = fglRes.rows[0].entity_id;
 
     // 5. Insert Building Actor
     const buildingClass = '/Game/Dune/Systems/Building/Pieces/BP_DuneBuildingBase.BP_DuneBuildingBase_C';
@@ -544,6 +547,23 @@ async function constructBlueprintAtPlayer(characterName, blueprint, offsetX = 0,
       INSERT INTO ${schema}.actors (id, class, map, transform, partition_id, dimension_index, gas_attributes, properties, owner_account_id, serial)
       VALUES ($1, $2, $3, ROW(ROW($4, $5, $6)::dune.vector, ROW(0.0, 0.0, 0.0, 1.0)::dune.quaternion)::dune.transform, $7, $8, '{}'::jsonb, $9::jsonb, NULL, 1)
     `, [buildingId, buildingClass, map, ax, ay, az, partition_id, dimension_index, JSON.stringify(buildingProperties)]);
+
+    // Insert FGL Entity and Link to Actor
+    const buildingComponents = {
+      FHealthComponent: [0, { m_CurrentHealth: 0.0, m_MaxDownButNotOutStateHealth: 0.0, m_CurrentDownButNotOutStateHealth: 0.0 }],
+      FAggroControllerComponent: [0, { m_TotalDamageDone: 0.0 }],
+      FBiomeWeatherModifierComponent: [1, { m_CurrentSandColor: { A: 1.0, B: 0.06859, G: 0.145263, r: 0.428689 }, CurrentSandBuildupModifier: 0.3, CurrentTemperatureModifier: 1.0 }]
+    };
+
+    await client.query(`
+      INSERT INTO ${schema}.fgl_entities (entity_id, components)
+      VALUES ($1, $2::jsonb)
+    `, [buildingEntityId, JSON.stringify(buildingComponents)]);
+
+    await client.query(`
+      INSERT INTO ${schema}.actor_fgl_entities (actor_id, entity_id, slot_name)
+      VALUES ($1, $2, 'Actor')
+    `, [buildingId, buildingEntityId]);
 
     // 6. Insert Building record
     await client.query(`
