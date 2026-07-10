@@ -866,6 +866,7 @@ const server = http.createServer(async (req, res) => {
       } catch (err) {
         sendJsonResponse(res, 500, { success: false, error: err.message });
       }
+    }
     else if (url.startsWith('/api/buildings/') && url.endsWith('/shift-height') && method === 'POST') {
       try {
         const parts = url.split('/');
