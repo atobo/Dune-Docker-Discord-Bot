@@ -848,7 +848,7 @@ const server = http.createServer(async (req, res) => {
         const actorsCount = await database.pool.query("SELECT COUNT(*) FROM dune.actors");
         const buildingsCount = await database.pool.query("SELECT COUNT(*) FROM dune.buildings");
         const instancesCount = await database.pool.query("SELECT COUNT(*) FROM dune.building_instances");
-        const distinctClasses = await database.pool.query("SELECT class, COUNT(*) FROM dune.actors GROUP BY class ORDER BY count DESC LIMIT 15");
+        const distinctClasses = await database.pool.query("SELECT class, COUNT(*) as count FROM dune.actors GROUP BY class ORDER BY count DESC LIMIT 15");
         const buildingActors = await database.pool.query("SELECT a.id, a.class, a.transform::text FROM dune.buildings b JOIN dune.actors a ON b.id = a.id LIMIT 10");
         const actorStateCheck = await database.pool.query("SELECT * FROM dune.actor_state LIMIT 10");
 
