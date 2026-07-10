@@ -595,13 +595,17 @@ async function constructBlueprintAtPlayer(characterName, blueprint, offsetX = 0,
           const qz = Math.sin(rad);
           const qw = Math.cos(rad);
 
+          const isFoundation = inst.provides_stability || (inst.building_type && inst.building_type.toLowerCase().includes('foundation'));
+          const flags = isFoundation ? 161 : 0;
+
           params.push(inst.instance_id || globalInstanceId++);
           params.push(inst.building_type);
           params.push([wx, wy, wz, 0.0, 0.0, qz, qw]);
           params.push(ownerEntityId);
+          params.push(flags);
 
-          valueStrings.push(`($1, $${pIndex}, $${pIndex+1}, $${pIndex+2}::real[], $${pIndex+3}, 0, 100.0, 0.0, 0, 0, 0, 0.0)`);
-          pIndex += 4;
+          valueStrings.push(`($1, $${pIndex}, $${pIndex+1}, $${pIndex+2}::real[], $${pIndex+3}, $${pIndex+4}, 100.0, 0.0, 0, 0, 0, 0.0)`);
+          pIndex += 5;
         });
 
         const queryText = `
