@@ -713,6 +713,93 @@ async function constructBlueprintAtPlayer(characterName, blueprint, offsetX = 0,
       await manageServerContainers('start');
     }
   }
+async function getBuildings() {
+  const schema = process.env.DB_SCHEMA || 'dune';
+  const client = await pool.connect();
+  try {
+    const res = await client.query(`
+      SELECT 
+        b.id AS building_id,
+        a.map,
+        a.transform::text AS transform,
+        (SELECT COUNT(*) FROM ${schema}.building_instances bi WHERE bi.building_id = b.id) AS pieces_count,
+        (
+          SELECT DISTINCT LOWER(${schema}.decrypt_user_data(eps.encrypted_character_name))
+          FROM ${schema}.building_instances bi
+          JOIN ${schema}.actor_fgl_entities afe ON bi.owner_entity_id = afe.entity_id AND afe.slot_name = 'DuneCharacter'
+          JOIN ${schema}.encrypted_player_state eps ON afe.actor_id = eps.player_pawn_id
+          WHERE bi.building_id = b.id AND bi.owner_entity_id IS NOT NULL
+          LIMIT 1
+        ) AS owner_name
+      FROM ${schema}.buildings b
+      LEFT JOIN ${schema}.actors a ON b.id = a.id
+      ORDER BY b.id DESC
+    `);
+    
+    // Parse coordinates from transform strings
+    return res.rows.map(row => {
+      let x = 0, y = 0, z = 0;
+      if (row.transform) {
+        const clean = row.transform.replace(/[()"']/g, '');
+        const parts = clean.split(',').map(Number);
+        if (parts.length >= 3 && !parts.some(isNaN)) {
+          x = parts[0];
+          y = parts[1];
+          z = parts[2];
+        }
+      }
+      return {
+        buildingId: row.building_id,
+        map: row.map || 'Unknown',
+        piecesCount: parseInt(row.pieces_count) || 0,
+        ownerName: row.owner_name || 'System / Unknown',
+        coords: { x, y, z }
+      };
+    });
+  } catch (error) {
+    console.error(`[Database] Error in getBuildings:`, error.message);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function deleteBuilding(buildingId) {
+  const schema = process.env.DB_SCHEMA || 'dune';
+  const client = await pool.connect();
+  let stoppedContainers = false;
+  try {
+    // Stop containers before making database updates
+    await manageServerContainers('stop');
+    stoppedContainers = true;
+
+    await client.query('BEGIN');
+
+    // 1. Delete FGL linkage (cascades to clean up fgl_entities via trigger)
+    await client.query(`DELETE FROM ${schema}.actor_fgl_entities WHERE actor_id = $1`, [buildingId]);
+
+    // 2. Delete building instances
+    await client.query(`DELETE FROM ${schema}.building_instances WHERE building_id = $1`, [buildingId]);
+
+    // 3. Delete building record
+    await client.query(`DELETE FROM ${schema}.buildings WHERE id = $1`, [buildingId]);
+
+    // 4. Delete base actor
+    await client.query(`DELETE FROM ${schema}.actors WHERE id = $1`, [buildingId]);
+
+    await client.query('COMMIT');
+    console.log(`[Database] Successfully deleted building ID ${buildingId} and stopped/started containers.`);
+    return { success: true };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error(`[Database] Error in deleteBuilding for ID ${buildingId}:`, error.message);
+    throw error;
+  } finally {
+    client.release();
+    if (stoppedContainers) {
+      await manageServerContainers('start');
+    }
+  }
 }
 
 module.exports = {
@@ -725,5 +812,7 @@ module.exports = {
   giveItemToPlayer,
   getAllCharactersWithPawnIds,
   grantBlueprintToPlayer,
-  constructBlueprintAtPlayer
+  constructBlueprintAtPlayer,
+  getBuildings,
+  deleteBuilding
 };

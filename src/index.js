@@ -841,6 +841,30 @@ const server = http.createServer(async (req, res) => {
         success: true,
         ...result
       });
+    else if (url === '/api/buildings' && method === 'GET') {
+      try {
+        const buildings = await database.getBuildings();
+        sendJsonResponse(res, 200, { success: true, buildings });
+      } catch (err) {
+        sendJsonResponse(res, 500, { success: false, error: err.message });
+      }
+    }
+
+    else if (url.startsWith('/api/buildings/') && method === 'DELETE') {
+      try {
+        const parts = url.split('/');
+        const buildingIdStr = parts[parts.length - 1];
+        const buildingId = parseInt(buildingIdStr);
+        if (isNaN(buildingId)) {
+          sendJsonResponse(res, 400, { success: false, error: 'Invalid building ID' });
+          return;
+        }
+
+        const result = await database.deleteBuilding(buildingId);
+        sendJsonResponse(res, 200, { success: true, ...result });
+      } catch (err) {
+        sendJsonResponse(res, 500, { success: false, error: err.message });
+      }
     }
 
     else if (url.startsWith('/api/debug/db-check') && method === 'GET') {
