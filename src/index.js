@@ -865,6 +865,27 @@ const server = http.createServer(async (req, res) => {
       } catch (err) {
         sendJsonResponse(res, 500, { success: false, error: err.message });
       }
+    else if (url.startsWith('/api/buildings/') && url.endsWith('/shift-height') && method === 'POST') {
+      try {
+        const parts = url.split('/');
+        const buildingId = parseInt(parts[3]);
+        if (isNaN(buildingId)) {
+          sendJsonResponse(res, 400, { success: false, error: 'Invalid building ID' });
+          return;
+        }
+
+        const body = await readRequestBody(req);
+        const zDelta = parseFloat(body.zDelta);
+        if (isNaN(zDelta)) {
+          sendJsonResponse(res, 400, { success: false, error: 'Missing or invalid zDelta value' });
+          return;
+        }
+
+        const result = await database.shiftBuildingHeight(buildingId, zDelta);
+        sendJsonResponse(res, 200, { success: true, ...result });
+      } catch (err) {
+        sendJsonResponse(res, 500, { success: false, error: err.message });
+      }
     }
 
     else if (url.startsWith('/api/debug/db-check') && method === 'GET') {

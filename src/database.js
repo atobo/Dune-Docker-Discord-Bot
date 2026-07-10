@@ -800,6 +800,52 @@ async function deleteBuilding(buildingId) {
       await manageServerContainers('start');
     }
   }
+async function shiftBuildingHeight(buildingId, zDelta) {
+  const schema = process.env.DB_SCHEMA || 'dune';
+  const client = await pool.connect();
+  let stoppedContainers = false;
+  try {
+    // Stop containers before updating database
+    await manageServerContainers('stop');
+    stoppedContainers = true;
+
+    await client.query('BEGIN');
+
+    // 1. Shift the base actor's Z transform component
+    await client.query(`
+      UPDATE ${schema}.actors
+      SET transform = ROW(
+        ROW(
+          ((transform).translation).x,
+          ((transform).translation).y,
+          ((transform).translation).z + $2
+        )::dune.vector,
+        (transform).rotation
+      )::dune.transform
+      WHERE id = $1
+    `, [buildingId, zDelta]);
+
+    // 2. Shift all Snapped Building Instances' Z coordinate
+    // Since transform is real[] array, index 3 is Z coordinate (1-indexed)
+    await client.query(`
+      UPDATE ${schema}.building_instances
+      SET transform[3] = transform[3] + $2
+      WHERE building_id = $1
+    `, [buildingId, zDelta]);
+
+    await client.query('COMMIT');
+    console.log(`[Database] Shifted building ID ${buildingId} height by ${zDelta} units.`);
+    return { success: true };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error(`[Database] Error in shiftBuildingHeight for ID ${buildingId}:`, error.message);
+    throw error;
+  } finally {
+    client.release();
+    if (stoppedContainers) {
+      await manageServerContainers('start');
+    }
+  }
 }
 
 module.exports = {
@@ -814,5 +860,6 @@ module.exports = {
   grantBlueprintToPlayer,
   constructBlueprintAtPlayer,
   getBuildings,
-  deleteBuilding
+  deleteBuilding,
+  shiftBuildingHeight
 };
