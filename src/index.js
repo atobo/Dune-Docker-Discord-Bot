@@ -1144,6 +1144,14 @@ async function startBot() {
 
   // Set up Loot Multiplier Database Trigger
   try {
+    // 0. Ensure the discord_bot_config table exists
+    await database.pool.query(`
+      CREATE TABLE IF NOT EXISTS dune.discord_bot_config (
+        config_key text PRIMARY KEY,
+        config_value jsonb
+      )
+    `);
+
     // 1. Initialize loot multiplier config key if not exists
     await database.pool.query(`
       INSERT INTO dune.discord_bot_config (config_key, config_value) 
