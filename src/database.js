@@ -504,7 +504,7 @@ async function constructBlueprintAtPlayer(characterName, blueprint, offsetX = 0,
     // Apply offsets to get final building anchor location
     const ax = px + offsetX;
     const ay = py + offsetY;
-    const az = pz + offsetZ;
+    const az = pz + offsetZ - 50; // default sink foundations by 50 units
 
     // 3. Find blueprint center
     let minX = Infinity, maxX = -Infinity;
