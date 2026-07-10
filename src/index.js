@@ -1175,7 +1175,9 @@ async function startBot() {
           -- Check if the target inventory belongs to a system-owned container (loot chest or NPC drop bag)
           SELECT NOT EXISTS (
               SELECT 1 FROM dune.permission_actor_rank par WHERE par.permission_actor_id = inv.actor_id
-          ) AND act.class NOT LIKE '%Character%' AND act.class NOT LIKE '%Thrall%'
+          ) AND NOT EXISTS (
+              SELECT 1 FROM dune.player_state ps WHERE ps.id = inv.actor_id
+          ) AND act.class NOT LIKE '%Thrall%'
           INTO is_system_container
           FROM dune.inventories inv
           JOIN dune.actors act ON inv.actor_id = act.id
