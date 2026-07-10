@@ -801,6 +801,8 @@ async function deleteBuilding(buildingId) {
       await manageServerContainers('start');
     }
   }
+}
+
 async function shiftBuildingHeight(buildingId, zDelta) {
   const schema = process.env.DB_SCHEMA || 'dune';
   const client = await pool.connect();
