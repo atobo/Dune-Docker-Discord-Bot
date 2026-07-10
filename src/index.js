@@ -959,6 +959,15 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    else if (url === '/api/loot/templates' && method === 'GET') {
+      try {
+        const templates = await database.getItemTemplates();
+        sendJsonResponse(res, 200, { success: true, templates });
+      } catch (err) {
+        sendJsonResponse(res, 500, { success: false, error: err.message });
+      }
+    }
+
     else if (url.startsWith('/api/debug/db-check') && method === 'GET') {
       try {
         const actorsCount = await database.pool.query("SELECT COUNT(*) FROM dune.actors");

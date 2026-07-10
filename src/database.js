@@ -1015,6 +1015,25 @@ async function deleteLootItem(itemId) {
   }
 }
 
+async function getItemTemplates() {
+  const schema = process.env.DB_SCHEMA || 'dune';
+  const client = await pool.connect();
+  try {
+    const res = await client.query(`
+      SELECT DISTINCT template_id 
+      FROM ${schema}.items 
+      WHERE template_id IS NOT NULL AND template_id <> ''
+      ORDER BY template_id
+    `);
+    return res.rows.map(row => row.template_id);
+  } catch (error) {
+    console.error(`[Database] Error in getItemTemplates:`, error.message);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   pool,
   testConnection,
@@ -1033,5 +1052,6 @@ module.exports = {
   getContainerItems,
   updateLootItem,
   addLootItem,
-  deleteLootItem
+  deleteLootItem,
+  getItemTemplates
 };
