@@ -1072,10 +1072,34 @@ const server = http.createServer(async (req, res) => {
           sendJsonResponse(res, 400, { success: false, error: 'Invalid multiplier value' });
           return;
         }
+
+        // Fetch old multiplier to scale existing items
+        const oldRes = await database.pool.query("SELECT config_value FROM dune.discord_bot_config WHERE config_key = 'loot_multiplier'");
+        const oldMultiplier = oldRes.rows.length > 0 && oldRes.rows[0].config_value ? parseInt(oldRes.rows[0].config_value.multiplier) || 1 : 1;
+
         await database.pool.query(
           "UPDATE dune.discord_bot_config SET config_value = jsonb_set(COALESCE(config_value, '{}'::jsonb), '{multiplier}', $1::text::jsonb) WHERE config_key = 'loot_multiplier'",
           [multiplier]
         );
+
+        if (multiplier !== oldMultiplier) {
+          console.log(`[LootMultiplier] Scaling existing loot from ${oldMultiplier}x to ${multiplier}x...`);
+          await database.pool.query(`
+            UPDATE dune.items i
+            SET stack_size = GREATEST(1, ROUND(i.stack_size * ($1::float / $2::float))::bigint)
+            FROM dune.inventories inv
+            JOIN dune.actors act ON inv.actor_id = act.id
+            WHERE i.inventory_id = inv.id
+              AND NOT EXISTS (
+                  SELECT 1 FROM dune.permission_actor_rank par WHERE par.permission_actor_id = inv.actor_id
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM dune.player_state ps WHERE ps.id = inv.actor_id
+              )
+              AND act.class NOT LIKE '%Thrall%'
+          `, [multiplier, oldMultiplier]);
+        }
+
         sendJsonResponse(res, 200, { success: true, multiplier });
       } catch (err) {
         sendJsonResponse(res, 500, { success: false, error: err.message });
