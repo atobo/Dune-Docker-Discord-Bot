@@ -819,9 +819,9 @@ async function shiftBuildingHeight(buildingId, zDelta) {
       UPDATE ${schema}.actors
       SET transform = ROW(
         ROW(
-          ((transform).translation).x,
-          ((transform).translation).y,
-          ((transform).translation).z + $2
+          ((transform).location).x,
+          ((transform).location).y,
+          ((transform).location).z + $2
         )::dune.vector,
         (transform).rotation
       )::dune.transform
