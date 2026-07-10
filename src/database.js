@@ -851,6 +851,137 @@ async function shiftBuildingHeight(buildingId, zDelta) {
   }
 }
 
+async function getLootContainers() {
+  const schema = process.env.DB_SCHEMA || 'dune';
+  const client = await pool.connect();
+  try {
+    const res = await client.query(`
+      SELECT 
+        a.id AS container_id,
+        a.class,
+        a.map,
+        a.transform::text AS transform,
+        inv.id AS inventory_id,
+        inv.max_item_count,
+        (SELECT COUNT(*) FROM ${schema}.items i WHERE i.inventory_id = inv.id) AS item_count
+      FROM ${schema}.inventories inv
+      JOIN ${schema}.actors a ON inv.actor_id = a.id
+      WHERE a.class NOT LIKE '%Character%' AND a.class NOT LIKE '%Thrall%'
+      ORDER BY a.class, a.id
+    `);
+    
+    return res.rows.map(row => {
+      let x = 0, y = 0, z = 0;
+      if (row.transform) {
+        const clean = row.transform.replace(/[()"']/g, '');
+        const parts = clean.split(',').map(Number);
+        if (parts.length >= 3 && !parts.some(isNaN)) {
+          x = parts[0];
+          y = parts[1];
+          z = parts[2];
+        }
+      }
+      return {
+        containerId: row.container_id,
+        class: row.class,
+        map: row.map || 'Unknown',
+        inventoryId: row.inventory_id,
+        maxItemCount: row.max_item_count || 24,
+        itemCount: parseInt(row.item_count) || 0,
+        coords: { x, y, z }
+      };
+    });
+  } catch (error) {
+    console.error(`[Database] Error in getLootContainers:`, error.message);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function getContainerItems(containerId) {
+  const schema = process.env.DB_SCHEMA || 'dune';
+  const client = await pool.connect();
+  try {
+    const res = await client.query(`
+      SELECT 
+        i.id AS item_id,
+        i.stack_size,
+        i.position_index,
+        i.template_id,
+        i.stats
+      FROM ${schema}.items i
+      JOIN ${schema}.inventories inv ON i.inventory_id = inv.id
+      WHERE inv.actor_id = $1
+      ORDER BY i.position_index
+    `, [containerId]);
+    
+    return res.rows.map(row => ({
+      itemId: row.item_id,
+      stackSize: parseInt(row.stack_size) || 1,
+      positionIndex: parseInt(row.position_index),
+      templateId: row.template_id,
+      stats: row.stats || {}
+    }));
+  } catch (error) {
+    console.error(`[Database] Error in getContainerItems for container ${containerId}:`, error.message);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function updateLootItem(itemId, stackSize, templateId) {
+  const schema = process.env.DB_SCHEMA || 'dune';
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      UPDATE ${schema}.items 
+      SET stack_size = $2, template_id = $3
+      WHERE id = $1
+    `, [itemId, stackSize, templateId]);
+    return { success: true };
+  } catch (error) {
+    console.error(`[Database] Error in updateLootItem for item ${itemId}:`, error.message);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function addLootItem(inventoryId, templateId, stackSize, positionIndex) {
+  const schema = process.env.DB_SCHEMA || 'dune';
+  const client = await pool.connect();
+  try {
+    const res = await client.query(`
+      INSERT INTO ${schema}.items 
+      (inventory_id, template_id, stack_size, position_index, is_new, acquisition_time, stats, quality_level)
+      VALUES ($1, $2, $3, $4, true, 0, '{}'::jsonb, 0)
+      RETURNING id
+    `, [inventoryId, templateId, stackSize, positionIndex]);
+    return { success: true, itemId: res.rows[0].id };
+  } catch (error) {
+    console.error(`[Database] Error in addLootItem for inventory ${inventoryId}:`, error.message);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function deleteLootItem(itemId) {
+  const schema = process.env.DB_SCHEMA || 'dune';
+  const client = await pool.connect();
+  try {
+    await client.query(`DELETE FROM ${schema}.items WHERE id = $1`, [itemId]);
+    return { success: true };
+  } catch (error) {
+    console.error(`[Database] Error in deleteLootItem for item ${itemId}:`, error.message);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   pool,
   testConnection,
@@ -864,5 +995,10 @@ module.exports = {
   constructBlueprintAtPlayer,
   getBuildings,
   deleteBuilding,
-  shiftBuildingHeight
+  shiftBuildingHeight,
+  getLootContainers,
+  getContainerItems,
+  updateLootItem,
+  addLootItem,
+  deleteLootItem
 };

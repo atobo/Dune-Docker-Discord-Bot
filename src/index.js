@@ -888,6 +888,73 @@ const server = http.createServer(async (req, res) => {
       } catch (err) {
         sendJsonResponse(res, 500, { success: false, error: err.message });
       }
+    else if (url === '/api/loot/containers' && method === 'GET') {
+      try {
+        const containers = await database.getLootContainers();
+        sendJsonResponse(res, 200, { success: true, containers });
+      } catch (err) {
+        sendJsonResponse(res, 500, { success: false, error: err.message });
+      }
+    }
+
+    else if (url.startsWith('/api/loot/containers/') && method === 'GET') {
+      try {
+        const parts = url.split('/');
+        const containerId = parseInt(parts[4]);
+        if (isNaN(containerId)) {
+          sendJsonResponse(res, 400, { success: false, error: 'Invalid container ID' });
+          return;
+        }
+        const items = await database.getContainerItems(containerId);
+        sendJsonResponse(res, 200, { success: true, items });
+      } catch (err) {
+        sendJsonResponse(res, 500, { success: false, error: err.message });
+      }
+    }
+
+    else if (url === '/api/loot/items/update' && method === 'POST') {
+      try {
+        const body = await readRequestBody(req);
+        const { itemId, stackSize, templateId } = body;
+        if (!itemId || !templateId || isNaN(parseInt(stackSize))) {
+          sendJsonResponse(res, 400, { success: false, error: 'Missing required parameters' });
+          return;
+        }
+        const result = await database.updateLootItem(parseInt(itemId), parseInt(stackSize), templateId);
+        sendJsonResponse(res, 200, { success: true, ...result });
+      } catch (err) {
+        sendJsonResponse(res, 500, { success: false, error: err.message });
+      }
+    }
+
+    else if (url === '/api/loot/items/add' && method === 'POST') {
+      try {
+        const body = await readRequestBody(req);
+        const { inventoryId, templateId, stackSize, positionIndex } = body;
+        if (!inventoryId || !templateId || isNaN(parseInt(stackSize)) || isNaN(parseInt(positionIndex))) {
+          sendJsonResponse(res, 400, { success: false, error: 'Missing required parameters' });
+          return;
+        }
+        const result = await database.addLootItem(parseInt(inventoryId), templateId, parseInt(stackSize), parseInt(positionIndex));
+        sendJsonResponse(res, 200, { success: true, ...result });
+      } catch (err) {
+        sendJsonResponse(res, 500, { success: false, error: err.message });
+      }
+    }
+
+    else if (url.startsWith('/api/loot/items/') && method === 'DELETE') {
+      try {
+        const parts = url.split('/');
+        const itemId = parseInt(parts[4]);
+        if (isNaN(itemId)) {
+          sendJsonResponse(res, 400, { success: false, error: 'Invalid item ID' });
+          return;
+        }
+        const result = await database.deleteLootItem(itemId);
+        sendJsonResponse(res, 200, { success: true, ...result });
+      } catch (err) {
+        sendJsonResponse(res, 500, { success: false, error: err.message });
+      }
     }
 
     else if (url.startsWith('/api/debug/db-check') && method === 'GET') {
