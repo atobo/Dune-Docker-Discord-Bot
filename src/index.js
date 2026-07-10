@@ -1094,7 +1094,7 @@ const server = http.createServer(async (req, res) => {
                   SELECT 1 FROM dune.permission_actor_rank par WHERE par.permission_actor_id = inv.actor_id
               )
               AND NOT EXISTS (
-                  SELECT 1 FROM dune.player_state ps WHERE ps.id = inv.actor_id
+                  SELECT 1 FROM dune.encrypted_player_state eps WHERE eps.player_controller_id = inv.actor_id
               )
               AND act.class NOT LIKE '%Thrall%'
           `, [multiplier, oldMultiplier]);
@@ -1200,7 +1200,7 @@ async function startBot() {
           SELECT NOT EXISTS (
               SELECT 1 FROM dune.permission_actor_rank par WHERE par.permission_actor_id = inv.actor_id
           ) AND NOT EXISTS (
-              SELECT 1 FROM dune.player_state ps WHERE ps.id = inv.actor_id
+              SELECT 1 FROM dune.encrypted_player_state eps WHERE eps.player_controller_id = inv.actor_id
           ) AND act.class NOT LIKE '%Thrall%'
           INTO is_system_container
           FROM dune.inventories inv
