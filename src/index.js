@@ -845,19 +845,21 @@ const server = http.createServer(async (req, res) => {
 
     else if (url.startsWith('/api/debug/db-check') && method === 'GET') {
       try {
-        const actorsCount = await database.pool.query("SELECT COUNT(*) FROM dune.actors WHERE class LIKE '%BP_DuneBuildingBase%'");
+        const actorsCount = await database.pool.query("SELECT COUNT(*) FROM dune.actors");
         const buildingsCount = await database.pool.query("SELECT COUNT(*) FROM dune.buildings");
         const instancesCount = await database.pool.query("SELECT COUNT(*) FROM dune.building_instances");
-        const recentActors = await database.pool.query("SELECT id, class, map, transform::text, partition_id, dimension_index, serial FROM dune.actors ORDER BY id DESC LIMIT 10");
-        const recentInstances = await database.pool.query("SELECT building_id, COUNT(*) FROM dune.building_instances GROUP BY building_id ORDER BY building_id DESC LIMIT 5");
+        const distinctClasses = await database.pool.query("SELECT class, COUNT(*) FROM dune.actors GROUP BY class ORDER BY count DESC LIMIT 15");
+        const buildingActors = await database.pool.query("SELECT a.id, a.class, a.transform::text FROM dune.buildings b JOIN dune.actors a ON b.id = a.id LIMIT 10");
+        const actorStateCheck = await database.pool.query("SELECT * FROM dune.actor_state LIMIT 10");
 
         sendJsonResponse(res, 200, {
           success: true,
           actorsCount: parseInt(actorsCount.rows[0].count),
           buildingsCount: parseInt(buildingsCount.rows[0].count),
           instancesCount: parseInt(instancesCount.rows[0].count),
-          recentActors: recentActors.rows,
-          recentInstances: recentInstances.rows
+          distinctClasses: distinctClasses.rows,
+          buildingActors: buildingActors.rows,
+          actorStateCheck: actorStateCheck.rows
         });
       } catch (err) {
         sendJsonResponse(res, 500, { success: false, error: err.message });
