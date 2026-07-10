@@ -841,6 +841,7 @@ const server = http.createServer(async (req, res) => {
         success: true,
         ...result
       });
+    }
     else if (url === '/api/buildings' && method === 'GET') {
       try {
         const buildings = await database.getBuildings();
