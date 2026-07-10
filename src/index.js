@@ -888,6 +888,8 @@ const server = http.createServer(async (req, res) => {
       } catch (err) {
         sendJsonResponse(res, 500, { success: false, error: err.message });
       }
+    }
+
     else if (url === '/api/loot/containers' && method === 'GET') {
       try {
         const containers = await database.getLootContainers();
