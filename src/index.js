@@ -851,6 +851,7 @@ const server = http.createServer(async (req, res) => {
         const distinctClasses = await database.pool.query("SELECT class, COUNT(*) as count FROM dune.actors GROUP BY class ORDER BY count DESC LIMIT 15");
         const buildingActors = await database.pool.query("SELECT a.id, a.class, a.transform::text FROM dune.buildings b JOIN dune.actors a ON b.id = a.id LIMIT 10");
         const actorStateCheck = await database.pool.query("SELECT * FROM dune.actor_state LIMIT 10");
+        const instancesSample = await database.pool.query("SELECT transform FROM dune.building_instances WHERE building_id = 144 LIMIT 5");
 
         sendJsonResponse(res, 200, {
           success: true,
@@ -859,7 +860,8 @@ const server = http.createServer(async (req, res) => {
           instancesCount: parseInt(instancesCount.rows[0].count),
           distinctClasses: distinctClasses.rows,
           buildingActors: buildingActors.rows,
-          actorStateCheck: actorStateCheck.rows
+          actorStateCheck: actorStateCheck.rows,
+          instancesSample: instancesSample.rows
         });
       } catch (err) {
         sendJsonResponse(res, 500, { success: false, error: err.message });
