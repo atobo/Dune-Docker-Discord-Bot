@@ -863,9 +863,40 @@ async function getLootContainers() {
         a.transform::text AS transform,
         inv.id AS inventory_id,
         inv.max_item_count,
-        (SELECT COUNT(*) FROM ${schema}.items i WHERE i.inventory_id = inv.id) AS item_count
+        (SELECT COUNT(*) FROM ${schema}.items i WHERE i.inventory_id = inv.id) AS item_count,
+        pa.actor_name AS custom_name,
+        COALESCE(
+          -- 1. Direct permission rank owner
+          (
+            SELECT DISTINCT LOWER(${schema}.decrypt_user_data(eps.encrypted_character_name))
+            FROM ${schema}.permission_actor_rank par
+            JOIN ${schema}.encrypted_player_state eps ON par.player_id = eps.player_controller_id
+            WHERE par.permission_actor_id = a.id
+            LIMIT 1
+          ),
+          -- 2. Parent-inherited permission owner (e.g. child objects)
+          (
+            SELECT DISTINCT LOWER(${schema}.decrypt_user_data(eps.encrypted_character_name))
+            FROM ${schema}.travel_actor_parent tap
+            JOIN ${schema}.permission_actor_rank par ON tap.parent_id = par.permission_actor_id
+            JOIN ${schema}.encrypted_player_state eps ON par.player_id = eps.player_controller_id
+            WHERE tap.id = a.id
+            LIMIT 1
+          ),
+          -- 3. Placeable landclaim totem owner
+          (
+            SELECT DISTINCT LOWER(${schema}.decrypt_user_data(eps.encrypted_character_name))
+            FROM ${schema}.placeables p
+            JOIN ${schema}.actor_fgl_entities afe ON p.owner_entity_id = afe.entity_id
+            JOIN ${schema}.permission_actor_rank par ON afe.actor_id = par.permission_actor_id
+            JOIN ${schema}.encrypted_player_state eps ON par.player_id = eps.player_controller_id
+            WHERE p.id = a.id
+            LIMIT 1
+          )
+        ) AS owner_name
       FROM ${schema}.inventories inv
       JOIN ${schema}.actors a ON inv.actor_id = a.id
+      LEFT JOIN ${schema}.permission_actor pa ON a.id = pa.actor_id
       WHERE a.class NOT LIKE '%Character%' AND a.class NOT LIKE '%Thrall%'
       ORDER BY a.class, a.id
     `);
@@ -888,6 +919,8 @@ async function getLootContainers() {
         inventoryId: row.inventory_id,
         maxItemCount: row.max_item_count || 24,
         itemCount: parseInt(row.item_count) || 0,
+        customName: row.custom_name || '',
+        ownerName: row.owner_name || 'System / Unknown',
         coords: { x, y, z }
       };
     });
