@@ -44,6 +44,9 @@ const client = new Client({
 // Log Watcher instance
 let logWatcher = null;
 
+// Queue to batch loot changes until population is 0
+let lootQueue = [];
+
 client.once('ready', async () => {
   console.log(`[Discord] Bot is online as ${client.user.tag}!`);
   
@@ -587,6 +590,31 @@ client.on('messageCreate', async (message) => {
   // Only relay messages sent in the configured channel
   if (message.channelId !== process.env.CHANNEL_ID) return;
 
+  // Debug DB Commands
+  if (message.content.startsWith('!dbcheck')) {
+    try {
+      const res = await database.pool.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'dune' ORDER BY table_name");
+      const tables = res.rows.map(r => r.table_name).join(', ');
+      await message.reply(`**Tables in 'dune' schema:**\n${tables || 'None found'}`);
+    } catch (err) {
+      await message.reply(`❌ Database check failed: ${err.message}`);
+    }
+    return;
+  }
+
+  if (message.content.startsWith('!dbquery ')) {
+    const query = message.content.substring(9);
+    try {
+      const res = await database.pool.query(query);
+      const rowsStr = JSON.stringify(res.rows, null, 2);
+      const output = rowsStr.length > 1900 ? rowsStr.substring(0, 1900) + '...' : rowsStr;
+      await message.reply(`**Result:**\n\`\`\`json\n${output}\n\`\`\``);
+    } catch (err) {
+      await message.reply(`❌ Query failed: ${err.message}`);
+    }
+    return;
+  }
+
   try {
     const authorName = message.member ? message.member.displayName : message.author.username;
     // Direct chat message format
@@ -922,8 +950,14 @@ const server = http.createServer(async (req, res) => {
           sendJsonResponse(res, 400, { success: false, error: 'Missing required parameters' });
           return;
         }
-        const result = await database.updateLootItem(parseInt(itemId), parseInt(stackSize), templateId);
-        sendJsonResponse(res, 200, { success: true, ...result });
+        
+        lootQueue.push({
+          type: 'update',
+          params: { itemId: parseInt(itemId), stackSize: parseInt(stackSize), templateId },
+          description: `Update item #${itemId} to ${stackSize}x ${templateId.split('.').pop()}`
+        });
+        
+        sendJsonResponse(res, 200, { success: true, queued: true });
       } catch (err) {
         sendJsonResponse(res, 500, { success: false, error: err.message });
       }
@@ -937,8 +971,14 @@ const server = http.createServer(async (req, res) => {
           sendJsonResponse(res, 400, { success: false, error: 'Missing required parameters' });
           return;
         }
-        const result = await database.addLootItem(parseInt(inventoryId), templateId, parseInt(stackSize), parseInt(positionIndex));
-        sendJsonResponse(res, 200, { success: true, ...result });
+        
+        lootQueue.push({
+          type: 'add',
+          params: { inventoryId: parseInt(inventoryId), templateId, stackSize: parseInt(stackSize), positionIndex: parseInt(positionIndex) },
+          description: `Add ${stackSize}x ${templateId.split('.').pop()} to container`
+        });
+        
+        sendJsonResponse(res, 200, { success: true, queued: true });
       } catch (err) {
         sendJsonResponse(res, 500, { success: false, error: err.message });
       }
@@ -952,8 +992,54 @@ const server = http.createServer(async (req, res) => {
           sendJsonResponse(res, 400, { success: false, error: 'Invalid item ID' });
           return;
         }
-        const result = await database.deleteLootItem(itemId);
-        sendJsonResponse(res, 200, { success: true, ...result });
+        
+        lootQueue.push({
+          type: 'delete',
+          params: { itemId },
+          description: `Delete item #${itemId}`
+        });
+        
+        sendJsonResponse(res, 200, { success: true, queued: true });
+      } catch (err) {
+        sendJsonResponse(res, 500, { success: false, error: err.message });
+      }
+    }
+
+    else if (url === '/api/loot/queue' && method === 'GET') {
+      sendJsonResponse(res, 200, { success: true, queue: lootQueue });
+    }
+
+    else if (url === '/api/loot/queue/clear' && method === 'POST') {
+      lootQueue = [];
+      sendJsonResponse(res, 200, { success: true, message: 'Queue cleared.' });
+    }
+
+    else if (url === '/api/loot/queue/apply' && method === 'POST') {
+      try {
+        if (lootQueue.length === 0) {
+          sendJsonResponse(res, 400, { success: false, error: 'Queue is empty' });
+          return;
+        }
+
+        console.log(`[LootQueue] Force-applying ${lootQueue.length} queued loot edits...`);
+        for (const action of lootQueue) {
+          try {
+            if (action.type === 'add') {
+              await database.addLootItem(action.params.inventoryId, action.params.templateId, action.params.stackSize, action.params.positionIndex);
+            } else if (action.type === 'update') {
+              await database.updateLootItem(action.params.itemId, action.params.stackSize, action.params.templateId);
+            } else if (action.type === 'delete') {
+              await database.deleteLootItem(action.params.itemId);
+            }
+          } catch (err) {
+            console.error(`[LootQueue] Failed to execute queued action:`, action, err.message);
+          }
+        }
+
+        lootQueue = [];
+        console.log('[LootQueue] Force batch writes completed. Restarting Survival...');
+        const restartResult = await executeDuneRestart('survival');
+        sendJsonResponse(res, 200, { success: true, message: 'Queue applied and survival server restarted.', restartResult });
       } catch (err) {
         sendJsonResponse(res, 500, { success: false, error: err.message });
       }
@@ -963,6 +1049,34 @@ const server = http.createServer(async (req, res) => {
       try {
         const templates = await database.getItemTemplates();
         sendJsonResponse(res, 200, { success: true, templates });
+      } catch (err) {
+        sendJsonResponse(res, 500, { success: false, error: err.message });
+      }
+    }
+
+    else if (url === '/api/loot/multiplier' && method === 'GET') {
+      try {
+        const resDb = await database.pool.query("SELECT config_value FROM dune.discord_bot_config WHERE config_key = 'loot_multiplier'");
+        const multiplier = resDb.rows.length > 0 && resDb.rows[0].config_value ? parseInt(resDb.rows[0].config_value.multiplier) || 1 : 1;
+        sendJsonResponse(res, 200, { success: true, multiplier });
+      } catch (err) {
+        sendJsonResponse(res, 500, { success: false, error: err.message });
+      }
+    }
+
+    else if (url === '/api/loot/multiplier' && method === 'POST') {
+      try {
+        const body = await readRequestBody(req);
+        const multiplier = parseInt(body.multiplier);
+        if (isNaN(multiplier) || multiplier < 1) {
+          sendJsonResponse(res, 400, { success: false, error: 'Invalid multiplier value' });
+          return;
+        }
+        await database.pool.query(
+          "UPDATE dune.discord_bot_config SET config_value = jsonb_set(COALESCE(config_value, '{}'::jsonb), '{multiplier}', $1::text::jsonb) WHERE config_key = 'loot_multiplier'",
+          [multiplier]
+        );
+        sendJsonResponse(res, 200, { success: true, multiplier });
       } catch (err) {
         sendJsonResponse(res, 500, { success: false, error: err.message });
       }
@@ -1028,10 +1142,104 @@ async function startBot() {
     console.warn('[Init] Database configuration table not found or unavailable. Using environment variables. Error:', err.message);
   }
 
+  // Set up Loot Multiplier Database Trigger
+  try {
+    // 1. Initialize loot multiplier config key if not exists
+    await database.pool.query(`
+      INSERT INTO dune.discord_bot_config (config_key, config_value) 
+      VALUES ('loot_multiplier', '{"multiplier": 1}'::jsonb) 
+      ON CONFLICT (config_key) DO NOTHING
+    `);
+
+    // 2. Create trigger function
+    await database.pool.query(`
+      CREATE OR REPLACE FUNCTION dune.multiply_loot_stack_size()
+      RETURNS TRIGGER AS $$
+      DECLARE
+          is_system_container BOOLEAN;
+          multiplier INT := 1;
+      BEGIN
+          -- Get the multiplier from configuration
+          SELECT COALESCE((config_value->>'multiplier')::int, 1) INTO multiplier 
+          FROM dune.discord_bot_config 
+          WHERE config_key = 'loot_multiplier';
+
+          -- Check if the target inventory belongs to a system-owned container (loot chest or NPC drop bag)
+          SELECT NOT EXISTS (
+              SELECT 1 FROM dune.permission_actor pa WHERE pa.actor_id = inv.actor_id
+          ) AND NOT EXISTS (
+              SELECT 1 FROM dune.placeables p WHERE p.id = inv.actor_id
+          ) AND act.class NOT LIKE '%Character%' AND act.class NOT LIKE '%Thrall%'
+          INTO is_system_container
+          FROM dune.inventories inv
+          JOIN dune.actors act ON inv.actor_id = act.id
+          WHERE inv.id = NEW.inventory_id;
+
+          IF is_system_container AND multiplier > 1 THEN
+              NEW.stack_size := NEW.stack_size * multiplier;
+          END IF;
+
+          RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+    `);
+
+    // 3. Drop trigger if exists and recreate it
+    await database.pool.query(`
+      DROP TRIGGER IF EXISTS trg_multiply_loot ON dune.items;
+      CREATE TRIGGER trg_multiply_loot
+      BEFORE INSERT ON dune.items
+      FOR EACH ROW
+      EXECUTE FUNCTION dune.multiply_loot_stack_size();
+    `);
+    console.log('[Init] Verified and successfully installed Loot Multiplier database trigger.');
+  } catch (err) {
+    console.error('[Init] Failed to install Loot Multiplier trigger:', err.message);
+  }
+
   const API_PORT = process.env.API_PORT || 3005;
   server.listen(API_PORT, () => {
     console.log(`[API] Server is listening on port ${API_PORT}`);
   });
+
+  // Background interval check for loot queue
+  setInterval(async () => {
+    if (lootQueue.length === 0) return;
+
+    try {
+      const onlinePlayers = await database.getOnlinePlayers();
+      if (onlinePlayers.length > 0) {
+        console.log(`[LootQueue] Pending changes in queue, but ${onlinePlayers.length} players are online. Waiting for population to drop to 0...`);
+        return;
+      }
+
+      console.log(`[LootQueue] Population is 0. Processing ${lootQueue.length} queued loot edits...`);
+      
+      for (const action of lootQueue) {
+        try {
+          if (action.type === 'add') {
+            await database.addLootItem(action.params.inventoryId, action.params.templateId, action.params.stackSize, action.params.positionIndex);
+          } else if (action.type === 'update') {
+            await database.updateLootItem(action.params.itemId, action.params.stackSize, action.params.templateId);
+          } else if (action.type === 'delete') {
+            await database.deleteLootItem(action.params.itemId);
+          }
+          console.log(`[LootQueue] Successfully applied: ${action.description}`);
+        } catch (err) {
+          console.error(`[LootQueue] Failed to execute queued action:`, action, err.message);
+        }
+      }
+
+      // Clear queue before restart
+      lootQueue = [];
+
+      console.log('[LootQueue] Database batch writes completed. Triggering Survival server restart...');
+      const restartRes = await executeDuneRestart('survival');
+      console.log('[LootQueue] Survival server restart completed:', restartRes);
+    } catch (error) {
+      console.error('[LootQueue] Error running queue check:', error.message);
+    }
+  }, 20000);
 
   if (!process.env.DISCORD_TOKEN) {
     console.warn('[Init] WARNING: No DISCORD_TOKEN provided. The bot is running in configuration-only mode. Please set the token via the Dune Console addon UI.');
