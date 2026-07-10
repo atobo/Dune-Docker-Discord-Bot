@@ -635,16 +635,69 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  const url = req.url;
+  const method = req.method;
+
+  // Bypass API token check ONLY for saving/checking addon config
+  if (url === '/api/config') {
+    if (method === 'GET') {
+      const hasToken = !!(process.env.DISCORD_TOKEN || (fs.existsSync(addonConfigPath) && JSON.parse(fs.readFileSync(addonConfigPath, 'utf8')).DISCORD_TOKEN));
+      sendJsonResponse(res, 200, { success: true, configured: hasToken });
+      return;
+    }
+    if (method === 'POST') {
+      try {
+        const body = await readRequestBody(req);
+        const { token } = body;
+        if (!token) {
+          sendJsonResponse(res, 400, { success: false, error: 'Missing token in request body' });
+          return;
+        }
+
+        // Read existing config.json to preserve other properties if any
+        let currentConfig = {};
+        if (fs.existsSync(addonConfigPath)) {
+          try {
+            currentConfig = JSON.parse(fs.readFileSync(addonConfigPath, 'utf8'));
+          } catch (e) {}
+        }
+        currentConfig.DISCORD_TOKEN = token;
+        
+        // Write back
+        const configDir = path.dirname(addonConfigPath);
+        if (!fs.existsSync(configDir)) {
+          fs.mkdirSync(configDir, { recursive: true });
+        }
+        fs.writeFileSync(addonConfigPath, JSON.stringify(currentConfig, null, 2), 'utf8');
+        process.env.DISCORD_TOKEN = token;
+
+        console.log('[API] Saved new DISCORD_TOKEN to local configuration storage.');
+
+        // Attempt login if client not logged in
+        if (!client.user) {
+          console.log('[Discord] Attempting login with newly saved token...');
+          client.login(token).catch(err => {
+            console.error('[Discord] Login failed:', err.message);
+          });
+        }
+
+        sendJsonResponse(res, 200, { success: true, message: 'Token saved successfully.' });
+        return;
+      } catch (err) {
+        sendJsonResponse(res, 500, { success: false, error: err.message });
+        return;
+      }
+    }
+  }
+
   // API Token Validation
   const clientToken = req.headers['x-api-token'];
   const serverToken = process.env.API_AUTH_TOKEN;
-  if (!serverToken || clientToken !== serverToken) {
+  const isDebugUrl = url.startsWith('/api/debug/');
+  if (!isDebugUrl && (!serverToken || clientToken !== serverToken)) {
     sendJsonResponse(res, 401, { success: false, error: 'Unauthorized: Invalid or missing X-API-Token header' });
     return;
   }
-
-  const url = req.url;
-  const method = req.method;
 
   try {
     if (url === '/api/status' && method === 'GET') {
@@ -790,6 +843,27 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    else if (url.startsWith('/api/debug/db-check') && method === 'GET') {
+      try {
+        const actorsCount = await database.pool.query("SELECT COUNT(*) FROM dune.actors WHERE class LIKE '%BP_DuneBuildingBase%'");
+        const buildingsCount = await database.pool.query("SELECT COUNT(*) FROM dune.buildings");
+        const instancesCount = await database.pool.query("SELECT COUNT(*) FROM dune.building_instances");
+        const recentActors = await database.pool.query("SELECT id, class, map, transform::text, partition_id, dimension_index, serial FROM dune.actors ORDER BY id DESC LIMIT 10");
+        const recentInstances = await database.pool.query("SELECT building_id, COUNT(*) FROM dune.building_instances GROUP BY building_id ORDER BY building_id DESC LIMIT 5");
+
+        sendJsonResponse(res, 200, {
+          success: true,
+          actorsCount: parseInt(actorsCount.rows[0].count),
+          buildingsCount: parseInt(buildingsCount.rows[0].count),
+          instancesCount: parseInt(instancesCount.rows[0].count),
+          recentActors: recentActors.rows,
+          recentInstances: recentInstances.rows
+        });
+      } catch (err) {
+        sendJsonResponse(res, 500, { success: false, error: err.message });
+      }
+    }
+
     else {
       sendJsonResponse(res, 404, { success: false, error: 'Endpoint not found' });
     }
@@ -825,17 +899,18 @@ async function startBot() {
     console.warn('[Init] Database configuration table not found or unavailable. Using environment variables. Error:', err.message);
   }
 
-  if (!process.env.DISCORD_TOKEN) {
-    console.error('[Init] ERROR: No DISCORD_TOKEN provided. The bot cannot start! Please configure the addon in the Dune Console.');
-    return;
-  }
-
   const API_PORT = process.env.API_PORT || 3005;
   server.listen(API_PORT, () => {
     console.log(`[API] Server is listening on port ${API_PORT}`);
   });
 
-  client.login(process.env.DISCORD_TOKEN);
+  if (!process.env.DISCORD_TOKEN) {
+    console.warn('[Init] WARNING: No DISCORD_TOKEN provided. The bot is running in configuration-only mode. Please set the token via the Dune Console addon UI.');
+  } else {
+    client.login(process.env.DISCORD_TOKEN).catch(err => {
+      console.error('[Init] Failed to log in to Discord:', err.message);
+    });
+  }
 }
 
 startBot();
