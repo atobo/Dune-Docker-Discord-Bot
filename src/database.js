@@ -705,7 +705,6 @@ async function constructBlueprintAtPlayer(characterName, blueprint, offsetX = 0,
     return { success: true, buildingId, x: ax, y: ay, z: az };
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error(`[Database] Error in constructBlueprintAtPlayer:`, error.message);
     throw error;
   } finally {
     client.release();
@@ -713,6 +712,8 @@ async function constructBlueprintAtPlayer(characterName, blueprint, offsetX = 0,
       await manageServerContainers('start');
     }
   }
+}
+
 async function getBuildings() {
   const schema = process.env.DB_SCHEMA || 'dune';
   const client = await pool.connect();
