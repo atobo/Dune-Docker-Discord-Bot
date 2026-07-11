@@ -1302,8 +1302,8 @@ async function startBot() {
 
         if (prev) {
           // Detect transition: player was in a dungeon map, now they are in the overworld map
-          const wasInDungeon = prev.map && prev.map.startsWith('CB_');
-          const nowInOverworld = currentMap && !currentMap.startsWith('CB_');
+          const wasInDungeon = prev.map && (prev.map.startsWith('CB_') || prev.map.toLowerCase().includes('dungeon'));
+          const nowInOverworld = currentMap && !currentMap.startsWith('CB_') && !currentMap.toLowerCase().includes('dungeon');
 
           if (wasInDungeon && nowInOverworld) {
             console.log(`[Airdrop] Detected map transition for Account ${accountId}: ${prev.map} -> ${currentMap}`);
@@ -1328,6 +1328,17 @@ async function startBot() {
         name: 'Testing Station 152 (Ecolab)',
         level: 15,
         tag: 'BigMoments.SpiceVision.Complete', // Sourced from game completed tags
+        lootTable: [
+          { template: 'ChemicalReagent_T1', qty: 10 },
+          { template: 'StandardAmmo', qty: 30 },
+          { template: 'IronOre', qty: 25 }
+        ],
+        category: 'testing_stations'
+      },
+      'ElectricityDungeon': {
+        name: 'Testing Station 152 (Ecolab)',
+        level: 15,
+        tag: 'BigMoments.SpiceVision.Complete',
         lootTable: [
           { template: 'ChemicalReagent_T1', qty: 10 },
           { template: 'StandardAmmo', qty: 30 },
