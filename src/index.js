@@ -1363,7 +1363,7 @@ async function startBot() {
     const dungeonConfig = {
       'CB_Ecolab_Bronze_Green_152': {
         name: 'Testing Station 152 (Ecolab)',
-        level: 60,
+        level: 200,
         tag: 'Contract.Tracking.Journey.EcolabCompleted', // Updated to match game DB tag
         lootTable: [
           { template: 'ChemicalReagent_T1', qty: 10 },
@@ -1374,7 +1374,7 @@ async function startBot() {
       },
       'ElectricityDungeon': {
         name: 'Testing Station 152 (Ecolab)',
-        level: 60,
+        level: 200,
         tag: 'Contract.Tracking.Journey.EcolabCompleted', // Updated to match game DB tag
         lootTable: [
           { template: 'ChemicalReagent_T1', qty: 10 },
@@ -1390,7 +1390,7 @@ async function startBot() {
       // Generic fallback for other dynamic zones
       config = {
         name: `Testing Station ${dungeonMap}`,
-        level: 20,
+        level: 200,
         tag: `Dungeon.${dungeonMap.split('_')[1] || 'Generic'}.Complete`,
         lootTable: [
           { template: 'Sulfur', qty: 15 },
@@ -1448,7 +1448,7 @@ async function startBot() {
         LIMIT 1
       `, [accountId]);
       const xp = xpRes.rows.length > 0 ? parseInt(xpRes.rows[0].xp) || 0 : 0;
-      const playerLevel = Math.min(60, Math.floor(Math.sqrt(xp / 100)) + 1 || 1);
+      const playerLevel = Math.min(200, Math.floor(Math.sqrt(xp / 100)) + 1 || 1);
 
       // 5. Level-gap penalty calculation
       const levelGap = playerLevel - config.level;
