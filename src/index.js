@@ -1109,6 +1109,33 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    else if (url === '/api/debug/player-status' && method === 'GET') {
+      try {
+        const resPlayers = await database.pool.query(`
+          SELECT ps.account_id, ps.player_pawn_id, ps.character_name, act.map, ps.online_status::text as status
+          FROM dune.player_state ps
+          LEFT JOIN dune.actors act ON ps.player_pawn_id = act.id
+          WHERE ps.player_pawn_id IS NOT NULL AND LOWER(ps.online_status::text) = 'online'
+        `);
+        
+        const playersData = [];
+        for (const p of resPlayers.rows) {
+          const resTags = await database.pool.query(`
+            SELECT tag FROM dune.player_tags WHERE character_id = $1
+          `, [p.player_pawn_id]);
+          
+          playersData.push({
+            name: p.character_name,
+            map: p.map || 'Unknown',
+            tags: resTags.rows.map(r => r.tag)
+          });
+        }
+        sendJsonResponse(res, 200, { success: true, players: playersData });
+      } catch (err) {
+        sendJsonResponse(res, 500, { success: false, error: err.message });
+      }
+    }
+
     else if (url === '/api/settings/gameplay' && method === 'GET') {
       try {
         const { exec } = require('child_process');
