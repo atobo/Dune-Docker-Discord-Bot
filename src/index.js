@@ -1314,9 +1314,13 @@ async function startBot() {
       const res = await database.pool.query(`
         SELECT ps.account_id, ps.player_pawn_id, act.map, ps.online_status::text as status
         FROM dune.player_state ps
-        JOIN dune.actors act ON ps.player_pawn_id = act.id
+        LEFT JOIN dune.actors act ON ps.player_pawn_id = act.id
         WHERE ps.player_pawn_id IS NOT NULL
       `);
+
+      if (res.rows.length > 0) {
+        console.log(`[Airdrop Debug] Tick - fetched ${res.rows.length} player states. Nalita map: ${res.rows.find(r => r.account_id == 5)?.map || 'None'}`);
+      }
 
       for (const row of res.rows) {
         const accountId = row.account_id;
