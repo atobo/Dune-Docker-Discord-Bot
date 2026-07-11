@@ -1,4 +1,10 @@
 require('dotenv').config();
+if (process.stdout._handle && typeof process.stdout._handle.setBlocking === 'function') {
+  process.stdout._handle.setBlocking(true);
+}
+if (process.stderr._handle && typeof process.stderr._handle.setBlocking === 'function') {
+  process.stderr._handle.setBlocking(true);
+}
 const fs = require('fs');
 const path = require('path');
 
