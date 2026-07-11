@@ -1354,7 +1354,7 @@ async function startBot() {
       'CB_Ecolab_Bronze_Green_152': {
         name: 'Testing Station 152 (Ecolab)',
         level: 15,
-        tag: 'BigMoments.SpiceVision.Complete', // Sourced from game completed tags
+        tag: 'Contract.Tracking.Journey.EcolabCompleted', // Updated to match game DB tag
         lootTable: [
           { template: 'ChemicalReagent_T1', qty: 10 },
           { template: 'StandardAmmo', qty: 30 },
@@ -1365,7 +1365,7 @@ async function startBot() {
       'ElectricityDungeon': {
         name: 'Testing Station 152 (Ecolab)',
         level: 15,
-        tag: 'BigMoments.SpiceVision.Complete',
+        tag: 'Contract.Tracking.Journey.EcolabCompleted', // Updated to match game DB tag
         lootTable: [
           { template: 'ChemicalReagent_T1', qty: 10 },
           { template: 'StandardAmmo', qty: 30 },
