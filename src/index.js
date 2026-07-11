@@ -1363,7 +1363,7 @@ async function startBot() {
     const dungeonConfig = {
       'CB_Ecolab_Bronze_Green_152': {
         name: 'Testing Station 152 (Ecolab)',
-        level: 15,
+        level: 60,
         tag: 'Contract.Tracking.Journey.EcolabCompleted', // Updated to match game DB tag
         lootTable: [
           { template: 'ChemicalReagent_T1', qty: 10 },
@@ -1374,7 +1374,7 @@ async function startBot() {
       },
       'ElectricityDungeon': {
         name: 'Testing Station 152 (Ecolab)',
-        level: 15,
+        level: 60,
         tag: 'Contract.Tracking.Journey.EcolabCompleted', // Updated to match game DB tag
         lootTable: [
           { template: 'ChemicalReagent_T1', qty: 10 },
