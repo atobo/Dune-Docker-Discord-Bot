@@ -1091,6 +1091,21 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    else if (url === '/api/airdrop/pending' && method === 'GET') {
+      try {
+        const resDb = await database.pool.query(`
+          SELECT bpd.id, bpd.account_id, COALESCE(ps.character_name, 'Unknown') as character_name, bpd.template_id, bpd.stack_size, bpd.created_at
+          FROM dune.bot_pending_deliveries bpd
+          LEFT JOIN dune.player_state ps ON bpd.account_id = ps.account_id
+          WHERE bpd.is_applied = false
+          ORDER BY bpd.created_at DESC
+        `);
+        sendJsonResponse(res, 200, { success: true, pending: resDb.rows });
+      } catch (err) {
+        sendJsonResponse(res, 500, { success: false, error: err.message });
+      }
+    }
+
     else if (url === '/api/settings/gameplay' && method === 'GET') {
       try {
         const { exec } = require('child_process');
