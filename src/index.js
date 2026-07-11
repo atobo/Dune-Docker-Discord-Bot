@@ -1404,11 +1404,11 @@ async function startBot() {
     try {
       // 0. Get permanent character ID
       const charRes = await database.pool.query(
-        "SELECT id FROM dune.player_state WHERE player_pawn_id = $1 LIMIT 1",
-        [pawnId]
+        "SELECT id FROM dune.player_state WHERE account_id = $1 LIMIT 1",
+        [accountId]
       );
       if (charRes.rows.length === 0) {
-        console.log(`[Airdrop] Character state not found for Pawn ID ${pawnId}. Skipping reward.`);
+        console.log(`[Airdrop] Character state not found for Account ID ${accountId}. Skipping reward.`);
         return;
       }
       const characterId = charRes.rows[0].id;
