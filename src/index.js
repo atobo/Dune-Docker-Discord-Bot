@@ -1112,7 +1112,7 @@ const server = http.createServer(async (req, res) => {
     else if (url === '/api/debug/player-status' && method === 'GET') {
       try {
         const resPlayers = await database.pool.query(`
-          SELECT ps.account_id, ps.player_pawn_id, ps.character_name, act.map, ps.online_status::text as status
+          SELECT ps.id, ps.account_id, ps.player_pawn_id, ps.character_name, act.map, ps.online_status::text as status
           FROM dune.player_state ps
           LEFT JOIN dune.actors act ON ps.player_pawn_id = act.id
           WHERE ps.player_pawn_id IS NOT NULL AND LOWER(ps.online_status::text) = 'online'
@@ -1122,7 +1122,7 @@ const server = http.createServer(async (req, res) => {
         for (const p of resPlayers.rows) {
           const resTags = await database.pool.query(`
             SELECT tag FROM dune.player_tags WHERE character_id = $1
-          `, [p.player_pawn_id]);
+          `, [p.id]);
           
           playersData.push({
             name: p.character_name,
@@ -1392,13 +1392,24 @@ async function startBot() {
     }
 
     try {
+      // 0. Get permanent character ID
+      const charRes = await database.pool.query(
+        "SELECT id FROM dune.player_state WHERE player_pawn_id = $1 LIMIT 1",
+        [pawnId]
+      );
+      if (charRes.rows.length === 0) {
+        console.log(`[Airdrop] Character state not found for Pawn ID ${pawnId}. Skipping reward.`);
+        return;
+      }
+      const characterId = charRes.rows[0].id;
+
       // 1. Check if completion tag exists in player_tags
       const tagRes = await database.pool.query(
-        "SELECT 1 FROM dune.player_tags WHERE account_id = $1 AND tag = $2",
-        [accountId, config.tag]
+        "SELECT 1 FROM dune.player_tags WHERE character_id = $1 AND tag = $2",
+        [characterId, config.tag]
       );
       if (tagRes.rows.length === 0) {
-        console.log(`[Airdrop] Completion tag ${config.tag} not found for Account ${accountId}. Skipping reward.`);
+        console.log(`[Airdrop] Completion tag ${config.tag} not found for Character ID ${characterId} (Account ${accountId}). Skipping reward.`);
         return;
       }
 
