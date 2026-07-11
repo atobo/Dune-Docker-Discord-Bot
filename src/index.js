@@ -1059,7 +1059,7 @@ const server = http.createServer(async (req, res) => {
     else if (url === '/api/airdrop/multipliers' && method === 'GET') {
       try {
         const resDb = await database.pool.query("SELECT config_value FROM dune.discord_bot_config WHERE config_key = 'airdrop_multipliers'");
-        const multipliers = resDb.rows.length > 0 && resDb.rows[0].config_value ? resDb.rows[0].config_value : { testing_stations: 1, shipwrecks: 1, daily_allowance: 1, scaling_mode: 'quantity' };
+        const multipliers = resDb.rows.length > 0 && resDb.rows[0].config_value ? resDb.rows[0].config_value : { testing_stations: 1, shipwrecks: 1, daily_allowance: 1, scaling_mode: 'quantity', daily_cap: 3, loot_grade_chance: 10 };
         sendJsonResponse(res, 200, { success: true, multipliers });
       } catch (err) {
         sendJsonResponse(res, 500, { success: false, error: err.message });
@@ -1072,14 +1072,16 @@ const server = http.createServer(async (req, res) => {
         const testing_stations = parseInt(body.testing_stations);
         const shipwrecks = parseInt(body.shipwrecks);
         const daily_allowance = parseInt(body.daily_allowance);
+        const daily_cap = parseInt(body.daily_cap);
+        const loot_grade_chance = parseInt(body.loot_grade_chance);
         const scaling_mode = body.scaling_mode || 'quantity';
         
-        if (isNaN(testing_stations) || testing_stations < 1 || isNaN(shipwrecks) || shipwrecks < 1 || isNaN(daily_allowance) || daily_allowance < 1) {
+        if (isNaN(testing_stations) || testing_stations < 1 || isNaN(shipwrecks) || shipwrecks < 1 || isNaN(daily_allowance) || daily_allowance < 1 || isNaN(daily_cap) || daily_cap < 1 || isNaN(loot_grade_chance) || loot_grade_chance < 0) {
           sendJsonResponse(res, 400, { success: false, error: 'Invalid multipliers values' });
           return;
         }
 
-        const multipliers = { testing_stations, shipwrecks, daily_allowance, scaling_mode };
+        const multipliers = { testing_stations, shipwrecks, daily_allowance, scaling_mode, daily_cap, loot_grade_chance };
         await database.pool.query(
           "INSERT INTO dune.discord_bot_config (config_key, config_value) VALUES ('airdrop_multipliers', $1::jsonb) ON CONFLICT (config_key) DO UPDATE SET config_value = EXCLUDED.config_value",
           [JSON.stringify(multipliers)]
