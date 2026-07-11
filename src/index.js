@@ -1056,75 +1056,36 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    else if (url === '/api/loot/multiplier' && method === 'GET') {
+    else if (url === '/api/airdrop/multipliers' && method === 'GET') {
       try {
-        const resDb = await database.pool.query("SELECT config_value FROM dune.discord_bot_config WHERE config_key = 'loot_multiplier'");
-        const multiplier = resDb.rows.length > 0 && resDb.rows[0].config_value ? parseInt(resDb.rows[0].config_value.multiplier) || 1 : 1;
-        sendJsonResponse(res, 200, { success: true, multiplier });
+        const resDb = await database.pool.query("SELECT config_value FROM dune.discord_bot_config WHERE config_key = 'airdrop_multipliers'");
+        const multipliers = resDb.rows.length > 0 && resDb.rows[0].config_value ? resDb.rows[0].config_value : { testing_stations: 1, shipwrecks: 1, daily_allowance: 1 };
+        sendJsonResponse(res, 200, { success: true, multipliers });
       } catch (err) {
         sendJsonResponse(res, 500, { success: false, error: err.message });
       }
     }
 
-    else if (url === '/api/loot/multiplier' && method === 'POST') {
+    else if (url === '/api/airdrop/multipliers' && method === 'POST') {
       try {
         const body = await readRequestBody(req);
-        const multiplier = parseInt(body.multiplier);
-        if (isNaN(multiplier) || multiplier < 1) {
-          sendJsonResponse(res, 400, { success: false, error: 'Invalid multiplier value' });
+        const testing_stations = parseInt(body.testing_stations);
+        const shipwrecks = parseInt(body.shipwrecks);
+        const daily_allowance = parseInt(body.daily_allowance);
+        
+        if (isNaN(testing_stations) || testing_stations < 1 || isNaN(shipwrecks) || shipwrecks < 1 || isNaN(daily_allowance) || daily_allowance < 1) {
+          sendJsonResponse(res, 400, { success: false, error: 'Invalid multipliers values' });
           return;
         }
 
-        // Fetch old multiplier to scale existing items
-        const oldRes = await database.pool.query("SELECT config_value FROM dune.discord_bot_config WHERE config_key = 'loot_multiplier'");
-        const oldMultiplier = oldRes.rows.length > 0 && oldRes.rows[0].config_value ? parseInt(oldRes.rows[0].config_value.multiplier) || 1 : 1;
-
+        const multipliers = { testing_stations, shipwrecks, daily_allowance };
         await database.pool.query(
-          "UPDATE dune.discord_bot_config SET config_value = jsonb_set(COALESCE(config_value, '{}'::jsonb), '{multiplier}', $1::text::jsonb) WHERE config_key = 'loot_multiplier'",
-          [multiplier]
+          "INSERT INTO dune.discord_bot_config (config_key, config_value) VALUES ('airdrop_multipliers', $1::jsonb) ON CONFLICT (config_key) DO UPDATE SET config_value = EXCLUDED.config_value",
+          [JSON.stringify(multipliers)]
         );
 
-        if (multiplier !== oldMultiplier) {
-          console.log(`[LootMultiplier] Scaling existing loot from ${oldMultiplier}x to ${multiplier}x...`);
-          await database.pool.query(`
-            UPDATE dune.items i
-            SET stack_size = GREATEST(1, ROUND(i.stack_size * ($1::float / $2::float))::bigint)
-            FROM dune.inventories inv
-            JOIN dune.actors act ON inv.actor_id = act.id
-            WHERE i.inventory_id = inv.id
-              AND NOT EXISTS (
-                  SELECT 1 FROM dune.permission_actor_rank par WHERE par.permission_actor_id = inv.actor_id
-              )
-              AND NOT EXISTS (
-                  SELECT 1 FROM dune.encrypted_player_state eps WHERE eps.player_controller_id = inv.actor_id
-              )
-              AND act.class NOT LIKE '%Thrall%'
-              AND NOT (
-                  i.template_id LIKE 'Emote_%' 
-                  OR i.template_id LIKE 'Stillsuit_%' 
-                  OR i.template_id LIKE 'Combat_%'
-                  OR i.template_id LIKE '%Rifle%'
-                  OR i.template_id LIKE '%Scattergun%'
-                  OR i.template_id LIKE '%Shotgun%'
-                  OR i.template_id LIKE '%Tool%'
-                  OR i.template_id LIKE '%Backup%'
-                  OR i.template_id LIKE '%Light%'
-                  OR i.template_id LIKE '%Belt%'
-                  OR i.template_id LIKE '%Scythe%'
-                  OR i.template_id LIKE '%Key%'
-                  OR i.template_id LIKE '%Corpse%'
-                  OR i.template_id LIKE 'Radiation_Suit%'
-                  OR i.template_id LIKE 'UniqueAr%'
-                  OR i.template_id LIKE 'Holtzman%'
-                  OR i.template_id LIKE 'PowerPack%'
-                  OR i.template_id = 'FullSuspensorBelt'
-                  OR i.template_id = 'JourneyShieldDissembler'
-                  OR i.template_id LIKE 'Contract%'
-              )
-          `, [multiplier, oldMultiplier]);
-        }
-
-        sendJsonResponse(res, 200, { success: true, multiplier });
+        console.log('[AirdropMultiplier] Saved airdrop scaling multipliers:', multipliers);
+        sendJsonResponse(res, 200, { success: true, multipliers });
       } catch (err) {
         sendJsonResponse(res, 500, { success: false, error: err.message });
       }
@@ -1253,9 +1214,16 @@ async function startBot() {
     console.warn('[Init] Database configuration table not found or unavailable. Using environment variables. Error:', err.message);
   }
 
-  // Set up Loot Multiplier Database Trigger
+  // Revert Loot Multiplier DB Trigger & Set up Airdrop Config
   try {
-    // 0. Ensure the discord_bot_config table exists
+    // 0. Drop old trigger and function to restore database state
+    await database.pool.query(`
+      DROP TRIGGER IF EXISTS trg_multiply_loot ON dune.items;
+      DROP FUNCTION IF EXISTS dune.multiply_loot_stack_size();
+    `);
+    console.log('[Init] Removed legacy Loot Multiplier database trigger and function.');
+
+    // 1. Ensure the discord_bot_config table exists
     await database.pool.query(`
       CREATE TABLE IF NOT EXISTS dune.discord_bot_config (
         config_key text PRIMARY KEY,
@@ -1263,78 +1231,27 @@ async function startBot() {
       )
     `);
 
-    // 1. Initialize loot multiplier config key if not exists
+    // 2. Initialize airdrop multiplier config key if not exists
     await database.pool.query(`
       INSERT INTO dune.discord_bot_config (config_key, config_value) 
-      VALUES ('loot_multiplier', '{"multiplier": 1}'::jsonb) 
+      VALUES ('airdrop_multiplier', '{"multiplier": 1}'::jsonb) 
       ON CONFLICT (config_key) DO NOTHING
     `);
 
-    // 2. Create trigger function
+    // 3. Create the pending deliveries queue table
     await database.pool.query(`
-      CREATE OR REPLACE FUNCTION dune.multiply_loot_stack_size()
-      RETURNS TRIGGER AS $$
-      DECLARE
-          is_system_container BOOLEAN;
-          multiplier INT := 1;
-      BEGIN
-          -- Get the multiplier from configuration
-          SELECT COALESCE((config_value->>'multiplier')::int, 1) INTO multiplier 
-          FROM dune.discord_bot_config 
-          WHERE config_key = 'loot_multiplier';
-
-          -- Check if the target inventory belongs to a system-owned container (loot chest or NPC drop bag)
-          SELECT NOT EXISTS (
-              SELECT 1 FROM dune.permission_actor_rank par WHERE par.permission_actor_id = inv.actor_id
-          ) AND NOT EXISTS (
-              SELECT 1 FROM dune.encrypted_player_state eps WHERE eps.player_controller_id = inv.actor_id
-          ) AND act.class NOT LIKE '%Thrall%'
-          INTO is_system_container
-          FROM dune.inventories inv
-          JOIN dune.actors act ON inv.actor_id = act.id
-          WHERE inv.id = NEW.inventory_id;
-
-          IF is_system_container AND multiplier > 1 AND NOT (
-              NEW.template_id LIKE 'Emote_%' 
-              OR NEW.template_id LIKE 'Stillsuit_%' 
-              OR NEW.template_id LIKE 'Combat_%'
-              OR NEW.template_id LIKE '%Rifle%'
-              OR NEW.template_id LIKE '%Scattergun%'
-              OR NEW.template_id LIKE '%Shotgun%'
-              OR NEW.template_id LIKE '%Tool%'
-              OR NEW.template_id LIKE '%Backup%'
-              OR NEW.template_id LIKE '%Light%'
-              OR NEW.template_id LIKE '%Belt%'
-              OR NEW.template_id LIKE '%Scythe%'
-              OR NEW.template_id LIKE '%Key%'
-              OR NEW.template_id LIKE '%Corpse%'
-              OR NEW.template_id LIKE 'Radiation_Suit%'
-              OR NEW.template_id LIKE 'UniqueAr%'
-              OR NEW.template_id LIKE 'Holtzman%'
-              OR NEW.template_id LIKE 'PowerPack%'
-              OR NEW.template_id = 'FullSuspensorBelt'
-              OR NEW.template_id = 'JourneyShieldDissembler'
-              OR NEW.template_id LIKE 'Contract%'
-          ) THEN
-              NEW.stack_size := NEW.stack_size * multiplier;
-          END IF;
-
-          RETURN NEW;
-      END;
-      $$ LANGUAGE plpgsql;
+      CREATE TABLE IF NOT EXISTS dune.bot_pending_deliveries (
+        id SERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        template_id TEXT NOT NULL,
+        stack_size INT NOT NULL,
+        is_applied BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
     `);
-
-    // 3. Drop trigger if exists and recreate it
-    await database.pool.query(`
-      DROP TRIGGER IF EXISTS trg_multiply_loot ON dune.items;
-      CREATE TRIGGER trg_multiply_loot
-      BEFORE INSERT ON dune.items
-      FOR EACH ROW
-      EXECUTE FUNCTION dune.multiply_loot_stack_size();
-    `);
-    console.log('[Init] Verified and successfully installed Loot Multiplier database trigger.');
+    console.log('[Init] Verified and successfully initialized Airdrop Delivery database tables.');
   } catch (err) {
-    console.error('[Init] Failed to install Loot Multiplier trigger:', err.message);
+    console.error('[Init] Failed to initialize database setup:', err.message);
   }
 
   const API_PORT = process.env.API_PORT || 3005;
@@ -1342,44 +1259,184 @@ async function startBot() {
     console.log(`[API] Server is listening on port ${API_PORT}`);
   });
 
-  // Background interval check for loot queue
+  // Track players' previous maps to detect zone changes
+  const playerMapCache = {};
+
+  // Background interval check for map transitions and offline queue processing
   setInterval(async () => {
-    if (lootQueue.length === 0) return;
+    try {
+      // 1. Fetch active players, their maps, and online status
+      const res = await database.pool.query(`
+        SELECT ps.account_id, ps.player_pawn_id, act.map, ps.online_status::text as status
+        FROM dune.player_state ps
+        JOIN dune.actors act ON ps.player_pawn_id = act.id
+        WHERE ps.player_pawn_id IS NOT NULL
+      `);
+
+      for (const row of res.rows) {
+        const accountId = row.account_id;
+        const currentMap = row.map;
+        const isOnline = row.status === 'Online';
+        const prev = playerMapCache[accountId];
+
+        // Store/Update cache
+        playerMapCache[accountId] = { map: currentMap, online: isOnline };
+
+        if (prev) {
+          // Detect transition: player was in a dungeon map, now they are in the overworld map
+          const wasInDungeon = prev.map && prev.map.startsWith('CB_');
+          const nowInOverworld = currentMap && !currentMap.startsWith('CB_');
+
+          if (wasInDungeon && nowInOverworld) {
+            console.log(`[Airdrop] Detected map transition for Account ${accountId}: ${prev.map} -> ${currentMap}`);
+            await checkAndQueueDungeonReward(accountId, prev.map, row.player_pawn_id);
+          }
+        }
+
+        // 2. If player is transitioning or offline, check and inject pending deliveries
+        if (!isOnline || (prev && prev.map !== currentMap)) {
+          await processPendingDeliveries(accountId, row.player_pawn_id);
+        }
+      }
+    } catch (error) {
+      console.error('[Airdrop] Error running transition check:', error.message);
+    }
+  }, 10000);
+
+  // Helper: Verify dungeon completion tag and queue reward crates
+  async function checkAndQueueDungeonReward(accountId, dungeonMap, pawnId) {
+    const dungeonConfig = {
+      'CB_Ecolab_Bronze_Green_152': {
+        name: 'Testing Station 152 (Ecolab)',
+        level: 15,
+        tag: 'BigMoments.SpiceVision.Complete', // Sourced from game completed tags
+        lootTable: [
+          { template: 'ChemicalReagent_T1', qty: 10 },
+          { template: 'StandardAmmo', qty: 30 },
+          { template: 'IronOre', qty: 25 }
+        ],
+        category: 'testing_stations'
+      }
+    };
+
+    let config = dungeonConfig[dungeonMap];
+    if (!config) {
+      // Generic fallback for other dynamic zones
+      config = {
+        name: `Testing Station ${dungeonMap}`,
+        level: 20,
+        tag: `Dungeon.${dungeonMap.split('_')[1] || 'Generic'}.Complete`,
+        lootTable: [
+          { template: 'Sulfur', qty: 15 },
+          { template: 'CopperOre', qty: 20 },
+          { template: 'BasicAmmo', qty: 25 }
+        ],
+        category: 'testing_stations'
+      };
+    }
 
     try {
-      const onlinePlayers = await database.getOnlinePlayers();
-      if (onlinePlayers.length > 0) {
-        console.log(`[LootQueue] Pending changes in queue, but ${onlinePlayers.length} players are online. Waiting for population to drop to 0...`);
+      // 1. Check if completion tag exists in player_tags
+      const tagRes = await database.pool.query(
+        "SELECT 1 FROM dune.player_tags WHERE account_id = $1 AND tag = $2",
+        [accountId, config.tag]
+      );
+      if (tagRes.rows.length === 0) {
+        console.log(`[Airdrop] Completion tag ${config.tag} not found for Account ${accountId}. Skipping reward.`);
         return;
       }
 
-      console.log(`[LootQueue] Population is 0. Processing ${lootQueue.length} queued loot edits...`);
-      
-      for (const action of lootQueue) {
-        try {
-          if (action.type === 'add') {
-            await database.addLootItem(action.params.inventoryId, action.params.templateId, action.params.stackSize, action.params.positionIndex);
-          } else if (action.type === 'update') {
-            await database.updateLootItem(action.params.itemId, action.params.stackSize, action.params.templateId);
-          } else if (action.type === 'delete') {
-            await database.deleteLootItem(action.params.itemId);
-          }
-          console.log(`[LootQueue] Successfully applied: ${action.description}`);
-        } catch (err) {
-          console.error(`[LootQueue] Failed to execute queued action:`, action, err.message);
-        }
+      // 2. Anti-spam: check if they claimed this dungeon's reward in the last 15 minutes
+      const claimRes = await database.pool.query(`
+        SELECT 1 FROM dune.bot_pending_deliveries 
+        WHERE account_id = $1 AND template_id = $2 AND created_at > NOW() - INTERVAL '15 minutes'
+      `, [accountId, config.lootTable[0].template]);
+      if (claimRes.rows.length > 0) {
+        console.log(`[Airdrop] Account ${accountId} already rewarded for ${config.name} recently. Cooldown active.`);
+        return;
       }
 
-      // Clear queue before restart
-      lootQueue = [];
+      // 3. Fetch current multipliers
+      const multRes = await database.pool.query("SELECT config_value FROM dune.discord_bot_config WHERE config_key = 'airdrop_multipliers'");
+      const multipliers = multRes.rows.length > 0 && multRes.rows[0].config_value ? multRes.rows[0].config_value : { testing_stations: 1, shipwrecks: 1, daily_allowance: 1 };
+      const multiplier = parseInt(multipliers[config.category]) || 1;
 
-      console.log('[LootQueue] Database batch writes completed. Triggering Survival server restart...');
-      const restartRes = await executeDuneRestart('survival');
-      console.log('[LootQueue] Survival server restart completed:', restartRes);
-    } catch (error) {
-      console.error('[LootQueue] Error running queue check:', error.message);
+      // 4. Fetch player level from FLevelComponent
+      const xpRes = await database.pool.query(`
+        SELECT COALESCE((fe.components->'FLevelComponent'->1->>'TotalXPEarned')::bigint, 0) as xp
+        FROM dune.player_state ps
+        LEFT JOIN dune.actor_fgl_entities afe ON afe.actor_id = ps.player_pawn_id AND afe.slot_name = 'DuneCharacter'
+        LEFT JOIN dune.fgl_entities fe ON fe.entity_id = afe.entity_id
+        WHERE ps.account_id = $1
+        LIMIT 1
+      `, [accountId]);
+      const xp = xpRes.rows.length > 0 ? parseInt(xpRes.rows[0].xp) || 0 : 0;
+      const playerLevel = Math.min(60, Math.floor(Math.sqrt(xp / 100)) + 1 || 1);
+
+      // 5. Level-gap penalty calculation
+      const levelGap = playerLevel - config.level;
+      let penalty = 1.0;
+      if (levelGap > 20) {
+        penalty = 0.0;
+      } else if (levelGap > 10) {
+        penalty = 0.2;
+      }
+
+      if (penalty > 0) {
+        for (const item of config.lootTable) {
+          const finalQty = Math.max(1, Math.round(item.qty * multiplier * penalty));
+          await database.pool.query(`
+            INSERT INTO dune.bot_pending_deliveries (account_id, template_id, stack_size, is_applied)
+            VALUES ($1, $2, $3, false)
+          `, [accountId, item.template, finalQty]);
+        }
+        console.log(`[Airdrop] Queued rewards for Account ${accountId} - Dungeon: ${config.name} (Multiplier: ${multiplier}x, Level Penalty: ${penalty}x)`);
+      } else {
+        console.log(`[Airdrop] Player level (${playerLevel}) too high for dungeon level (${config.level}). Level-gap penalty reduced reward to 0.`);
+      }
+    } catch (err) {
+      console.error(`[Airdrop] Failed to calculate/queue reward for Account ${accountId}:`, err.message);
     }
-  }, 20000);
+  }
+
+  // Helper: Deliver pending items into player's database inventory
+  async function processPendingDeliveries(accountId, pawnId) {
+    try {
+      const invRes = await database.pool.query(
+        "SELECT id FROM dune.inventories WHERE actor_id = $1 LIMIT 1",
+        [pawnId]
+      );
+      if (invRes.rows.length === 0) return;
+
+      const inventoryId = invRes.rows[0].id;
+
+      // Retrieve pending deliveries
+      const pending = await database.pool.query(
+        "SELECT id, template_id, stack_size FROM dune.bot_pending_deliveries WHERE account_id = $1 AND is_applied = false",
+        [accountId]
+      );
+      if (pending.rows.length === 0) return;
+
+      console.log(`[Airdrop] Injecting ${pending.rows.length} pending items to player ${pawnId} inventory ${inventoryId}...`);
+
+      for (const item of pending.rows) {
+        // Insert item safely using slot positioning
+        await database.pool.query(`
+          INSERT INTO dune.items (inventory_id, template_id, stack_size, position_index, is_new, acquisition_time, stats, quality_level)
+          VALUES ($1, $2, $3, (SELECT COALESCE(MAX(position_index) + 1, 0) FROM dune.items WHERE inventory_id = $1), true, 0, '{}'::jsonb, 0)
+        `, [inventoryId, item.template_id, item.stack_size]);
+        
+        // Mark delivery as completed
+        await database.pool.query(
+          "UPDATE dune.bot_pending_deliveries SET is_applied = true WHERE id = $1",
+          [item.id]
+        );
+      }
+      console.log(`[Airdrop] Delivered all pending items successfully.`);
+    } catch (err) {
+      console.error(`[Airdrop] Failed to process pending deliveries for Account ${accountId}:`, err.message);
+    }
+  }
 
   if (!process.env.DISCORD_TOKEN) {
     console.warn('[Init] WARNING: No DISCORD_TOKEN provided. The bot is running in configuration-only mode. Please set the token via the Dune Console addon UI.');
