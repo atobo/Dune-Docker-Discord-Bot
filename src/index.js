@@ -1480,7 +1480,7 @@ async function startBot() {
   async function processPendingDeliveries(accountId, pawnId) {
     try {
       const invRes = await database.pool.query(
-        "SELECT id FROM dune.inventories WHERE actor_id = $1 LIMIT 1",
+        "SELECT id FROM dune.inventories WHERE actor_id = $1 AND inventory_type = 0 LIMIT 1",
         [pawnId]
       );
       if (invRes.rows.length === 0) return;
