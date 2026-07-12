@@ -134,8 +134,12 @@ function loadGameItems() {
       const id = item.id.toLowerCase();
       
       // Universal/Shared resources across multiple tiers
-      if (id === 'plantfiber' || id === 'stone') return [0, 1, 2, 3, 4, 5, 6];
-      if (id === 'silicone' || id === 'dolomiterock' || id === 'floursand' || id === 'basalt') return [1, 2, 3, 4, 5, 6];
+      if (id === 'plantfiber' || id === 'stone' || id === 'solariscoin') return [0, 1, 2, 3, 4, 5, 6];
+      if (id === 'silicone' || id === 'dolomiterock' || id === 'floursand' || id === 'basalt' || id === 'oldimperialcomponent1' || id === 'oldimperialcomponent2' || id === 'greathousecomponent1' || id === 'greathousecomponent2') return [1, 2, 3, 4, 5, 6];
+      
+      if (id === 'erythritecrystal') return [3, 4, 5, 6];
+      if (id === 't3vendorcomponent1' || id === 'saguaroresourceraw') return [3, 4, 5, 6];
+      if (id === 'spicesand' || id === 'spiceresidue') return [5, 6];
       if (id === 'melangespice') return [6];
       
       if (id === 'scrapmetal') return [0, 1, 2, 3];
@@ -143,14 +147,27 @@ function loadGameItems() {
       if (id === 'weldingmaterial3') return [3, 4, 5];
       if (id === 'weldingmaterial5') return [5, 6];
       
-      if (id === 'fuelcanister') return [1, 2, 3];
-      if (id === 'fuelcanister_medium') return [3, 4, 5];
+      if (id === 'fuelcanister') return [1, 2];
+      if (id === 'fuelcanister_medium') return [2, 3, 4];
       if (id === 'fuelcanister_large') return [5, 6];
+
+      if (id === 'windturbinelubricant1') return [2, 3, 4];
+      if (id === 'windturbinelubricant2') return [4, 5, 6];
       
       if (id === 'windtrapfilter1') return [1, 2];
       if (id === 'windtrapfilter2') return [3, 4];
       if (id === 'windtrapfilter3') return [4, 5];
       if (id === 'windtrapfilter4') return [5, 6];
+
+      // Exclude completely (weight 0)
+      const excluded = [
+        't2muaddibcomponent', 'wormtooth', 'shigawiregarotte', 'corpse', 
+        'blanksinkchart', 'missionariaprotectivadoc3', 'experimentalwindturbinecomponent', 
+        'eventraidertoken', 'eventeliteraidertoken'
+      ];
+      if (excluded.includes(id)) {
+        return [];
+      }
 
       // Default to single tier calculated from getTier
       return [getTier(item)];
@@ -1661,6 +1678,92 @@ async function startBot() {
     }
   }, 10000);
 
+  function getResourceWeight(itemId, tier) {
+    const id = itemId.toLowerCase();
+    
+    // Excluded items (Not needed at all)
+    const excluded = [
+      't2muaddibcomponent', 'wormtooth', 'shigawiregarotte', 'corpse', 
+      'blanksinkchart', 'missionariaprotectivadoc3', 'experimentalwindturbinecomponent', 
+      'eventraidertoken', 'eventeliteraidertoken'
+    ];
+    if (excluded.includes(id)) return 0;
+
+    // SolarisCoin (Solari) - Money is always useful especially early on, easier to obtain later
+    if (id === 'solariscoin') {
+      if (tier <= 2) return 150;
+      if (tier <= 4) return 60;
+      return 20;
+    }
+
+    // Stone / PlantFiber / ScrapMetal (T0-6, but less weight at higher tiers)
+    if (id === 'stone' || id === 'plantfiber' || id === 'scrapmetal') {
+      if (tier <= 2) return 100;
+      if (tier <= 4) return 40;
+      return 15;
+    }
+    
+    // Silicone (T1-6, easier to get past tier 4)
+    if (id === 'silicone') {
+      if (tier <= 3) return 100;
+      if (tier === 4) return 50;
+      return 25;
+    }
+
+    // GreatHouseComponent1 & 2 (Plasteel Fiber, Mechanical Parts)
+    // T1-6, but easier at T6 so weight it less but not very low
+    if (id === 'greathousecomponent1' || id === 'greathousecomponent2') {
+      if (tier <= 4) return 100;
+      return 50;
+    }
+
+    // ErythriteCrystal (T3-6, used to make cobalt paste, easy at higher tiers)
+    if (id === 'erythritecrystal') {
+      if (tier <= 4) return 100;
+      return 30;
+    }
+
+    // T3VendorComponent1 (T3-6, used for bandages, easier at higher levels)
+    if (id === 't3vendorcomponent1') {
+      if (tier <= 3) return 100;
+      return 30;
+    }
+
+    // SaguaroResourceRaw (T2-6, but less at higher levels)
+    if (id === 'saguaroresourceraw') {
+      if (tier <= 3) return 100;
+      return 30;
+    }
+
+    return 100; // Default weight
+  }
+
+  function selectWeightedResource(resources, tier) {
+    if (!resources || resources.length === 0) return null;
+    
+    let totalWeight = 0;
+    const weightedList = [];
+    
+    for (const r of resources) {
+      const w = getResourceWeight(r.id, tier);
+      if (w > 0) {
+        totalWeight += w;
+        weightedList.push({ item: r, weight: w });
+      }
+    }
+    
+    if (totalWeight === 0) return null;
+    
+    let roll = Math.random() * totalWeight;
+    for (const entry of weightedList) {
+      roll -= entry.weight;
+      if (roll <= 0) {
+        return entry.item;
+      }
+    }
+    return weightedList[weightedList.length - 1].item;
+  }
+
   // Helper: Roll and queue playtime-based rewards by character tier
   async function rollPlaytimeReward(accountId, pawnId) {
     try {
@@ -1759,8 +1862,9 @@ async function startBot() {
         if (pool && pool.resources.length > 0) {
           let attempts = 0;
           while (attempts < 10) {
-            const idx = Math.floor(Math.random() * pool.resources.length);
-            const candidate = pool.resources[idx];
+            const candidate = selectWeightedResource(pool.resources, tier);
+            if (!candidate) break;
+            
             const isFragment = candidate.id.toLowerCase().includes('fragment') || candidate.id.toLowerCase().includes('pattern');
             
             // Only allow schematic fragments to succeed 10% of the time, otherwise roll for a raw material
@@ -1773,12 +1877,15 @@ async function startBot() {
           if (!rolledRes) {
             const nonFragments = pool.resources.filter(r => {
               const idL = r.id.toLowerCase();
-              return !(idL.includes('fragment') || idL.includes('pattern'));
+              return !(idL.includes('fragment') || idL.includes('pattern')) && getResourceWeight(r.id, tier) > 0;
             });
             if (nonFragments.length > 0) {
               rolledRes = nonFragments[Math.floor(Math.random() * nonFragments.length)].id;
             } else {
-              rolledRes = pool.resources[Math.floor(Math.random() * pool.resources.length)].id;
+              const activePool = pool.resources.filter(r => getResourceWeight(r.id, tier) > 0);
+              if (activePool.length > 0) {
+                rolledRes = activePool[Math.floor(Math.random() * activePool.length)].id;
+              }
             }
           }
         } else {
