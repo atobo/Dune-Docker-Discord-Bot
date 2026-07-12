@@ -1274,10 +1274,16 @@ const server = http.createServer(async (req, res) => {
             SELECT tag FROM dune.player_tags WHERE character_id = $1
           `, [p.id]);
           
+          const resPlaytime = await database.pool.query(`
+            SELECT active_seconds FROM dune.bot_active_playtime WHERE character_id = $1
+          `, [p.player_pawn_id]);
+          const activeSec = resPlaytime.rows.length > 0 ? resPlaytime.rows[0].active_seconds : 0;
+          
           playersData.push({
             name: p.character_name,
             map: p.map || 'Unknown',
-            tags: resTags.rows.map(r => r.tag)
+            tags: resTags.rows.map(r => r.tag),
+            active_seconds: activeSec
           });
         }
         sendJsonResponse(res, 200, { success: true, players: playersData });
