@@ -112,7 +112,8 @@ function loadGameItems() {
 
       // Numeric tier indicators: _01_, _T1_, etc.
       for (let t = 1; t <= 6; t++) {
-        if (id.includes(`_t${t}_`) || id.includes(`t${t}_`) || id.includes(`_t${t}`) ||
+        if (id.startsWith(`t${t}`) ||
+            id.includes(`_t${t}_`) || id.includes(`t${t}_`) || id.includes(`_t${t}`) ||
             id.includes(`_0${t}_`) || id.endsWith(`_0${t}`) || id.includes(`t${t}schematic`)) {
           return t;
         }
@@ -1730,15 +1731,23 @@ async function startBot() {
             const candidate = pool.resources[idx];
             const isFragment = candidate.id.toLowerCase().includes('fragment') || candidate.id.toLowerCase().includes('pattern');
             
-            // Only allow schematic fragments to succeed 20% of the time, otherwise roll for a raw material
-            if (!isFragment || Math.random() < 0.20) {
+            // Only allow schematic fragments to succeed 10% of the time, otherwise roll for a raw material
+            if (!isFragment || Math.random() < 0.10) {
               rolledRes = candidate.id;
               break;
             }
             attempts++;
           }
           if (!rolledRes) {
-            rolledRes = pool.resources[Math.floor(Math.random() * pool.resources.length)].id;
+            const nonFragments = pool.resources.filter(r => {
+              const idL = r.id.toLowerCase();
+              return !(idL.includes('fragment') || idL.includes('pattern'));
+            });
+            if (nonFragments.length > 0) {
+              rolledRes = nonFragments[Math.floor(Math.random() * nonFragments.length)].id;
+            } else {
+              rolledRes = pool.resources[Math.floor(Math.random() * pool.resources.length)].id;
+            }
           }
         } else {
           const list = fallbackResources[tier];
