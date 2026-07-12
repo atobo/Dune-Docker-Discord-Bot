@@ -82,12 +82,12 @@ function loadGameItems() {
 
       // Resource keyword mappings
       if (item.category === 'resources') {
-        if (id.includes('plastanium') || id.includes('chemicalreagent_t1') || id === 'silicone' || id === 'melangespice' || id === 'fremencomponent2' || id.startsWith('oldimperialcomponent') || id.startsWith('greathousecomponent') || id.includes('wormtooth') || id.includes('landsraad')) return 6;
-        if (id.includes('duraluminum') || id.includes('duraluminium') || id === 'fremencomponent1' || id.includes('cobalt')) return 5;
-        if (id.includes('aluminum') || id.includes('aluminium') || id.includes('erythrite')) return 4;
-        if (id.includes('steel') || id.includes('jasmium')) return 3;
-        if (id.includes('iron') || id.includes('plasteel') || id.includes('dolomite') || id.includes('saguaro')) return 2;
-        if (id.includes('copper') || id.includes('floursand') || id.includes('basalt')) return 1;
+        if (id.startsWith('t6') || id.includes('plastanium') || id.includes('chemicalreagent_t1') || id === 'silicone' || id === 'melangespice' || id === 'fremencomponent2' || id.startsWith('oldimperialcomponent') || id.startsWith('greathousecomponent') || id.includes('wormtooth') || id.includes('landsraad') || id === 'spicedfuelcell' || id === 'shigawiregarotte') return 6;
+        if (id.startsWith('t5') || id.includes('duraluminum') || id.includes('duraluminium') || id === 'fremencomponent1' || id.includes('cobalt') || id === 'plastone') return 5;
+        if (id.startsWith('t4') || id.includes('aluminum') || id.includes('aluminium') || id.includes('erythrite') || id === 'bauxiteore') return 4;
+        if (id.startsWith('t3') || id.includes('steel') || id.includes('jasmium')) return 3;
+        if (id.startsWith('t2') || id.includes('iron') || id.includes('plasteel') || id.includes('dolomite') || id.includes('saguaro') || id === 'magnetiteore') return 2;
+        if (id.startsWith('t1') || id.includes('copper') || id.includes('floursand') || id.includes('basalt') || id === 'azuriteore') return 1;
         if (id.includes('scrap')) return 0;
       }
 
