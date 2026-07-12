@@ -136,7 +136,18 @@ function loadGameItems() {
       if (cat === 'resources') {
         const idLower = item.id.toLowerCase();
         if (idLower.includes('fragment') || idLower.includes('pattern')) {
-          return;
+          // Keep only high-end schematic patterns relevant to each tier to prevent clutter
+          if (tier === 6 && (idLower.includes('ql4') || idLower.includes('ql5'))) {
+            // Keep QL4/5 fragments for Tier 6
+          } else if (tier === 5 && (idLower.includes('ql3') || idLower.includes('ql4'))) {
+            // Keep QL3/4 fragments for Tier 5
+          } else if (tier === 4 && (idLower.includes('ql2') || idLower.includes('ql3'))) {
+            // Keep QL2/3 fragments for Tier 4
+          } else if (tier === 3 && (idLower.includes('ql1') || idLower.includes('ql2'))) {
+            // Keep QL1/2 fragments for Tier 3
+          } else {
+            return;
+          }
         }
         gameItems.tiers[tier].resources.push(item);
       } else if (cat === 'schematics') {
