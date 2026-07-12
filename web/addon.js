@@ -5,11 +5,25 @@
   const guildIdInput = document.getElementById("guild-id");
   const rabbitmqUrlInput = document.getElementById("rabbitmq-url");
   const channelIdInput = document.getElementById("channel-id");
+  
+  // Playtime Rewards controls
+  const playtimeIntervalInput = document.getElementById("playtime-interval");
+  const playtimeIntervalVal = document.getElementById("playtime-interval-val");
+  const playtimeDistanceInput = document.getElementById("playtime-distance");
+  const playtimeDistanceVal = document.getElementById("playtime-distance-val");
+  const playtimeXpInput = document.getElementById("playtime-xp");
+  const playtimeXpVal = document.getElementById("playtime-xp-val");
+
   const saveBtn = document.getElementById("save-btn");
   const statusMsg = document.getElementById("status-message");
   const setupGuideCard = document.getElementById("setup-guide-card");
   const showGuideBtn = document.getElementById("show-guide-btn");
   const hideGuideBtn = document.getElementById("hide-guide-btn");
+
+  // Sync slider label values on drag
+  playtimeIntervalInput.addEventListener("input", (e) => { playtimeIntervalVal.textContent = e.target.value; });
+  playtimeDistanceInput.addEventListener("input", (e) => { playtimeDistanceVal.textContent = e.target.value; });
+  playtimeXpInput.addEventListener("input", (e) => { playtimeXpVal.textContent = e.target.value; });
 
   showGuideBtn.addEventListener("click", () => {
     setupGuideCard.style.display = "block";
@@ -70,6 +84,14 @@
         rabbitmqUrlInput.value = (config && config.RABBITMQ_URL) || "amqp://guest:guest@rabbitmq:5672";
         channelIdInput.value = (config && config.CHANNEL_ID) || "";
         
+        // Load playtime values
+        playtimeIntervalInput.value = (config && config.PLAYTIME_INTERVAL) !== undefined ? config.PLAYTIME_INTERVAL : 60;
+        playtimeIntervalVal.textContent = playtimeIntervalInput.value;
+        playtimeDistanceInput.value = (config && config.PLAYTIME_DISTANCE) !== undefined ? config.PLAYTIME_DISTANCE : 10;
+        playtimeDistanceVal.textContent = playtimeDistanceInput.value;
+        playtimeXpInput.value = (config && config.PLAYTIME_XP) !== undefined ? config.PLAYTIME_XP : 1;
+        playtimeXpVal.textContent = playtimeXpInput.value;
+
         if (!tokenConfigured) {
           setupGuideCard.style.display = "block";
         } else {
@@ -92,6 +114,9 @@
       GUILD_ID: guildIdInput.value.trim(),
       RABBITMQ_URL: rabbitmqUrlInput.value.trim(),
       CHANNEL_ID: channelIdInput.value.trim(),
+      PLAYTIME_INTERVAL: parseInt(playtimeIntervalInput.value) || 60,
+      PLAYTIME_DISTANCE: parseFloat(playtimeDistanceInput.value) !== NaN ? parseFloat(playtimeDistanceInput.value) : 10,
+      PLAYTIME_XP: parseInt(playtimeXpInput.value) !== NaN ? parseInt(playtimeXpInput.value) : 1
     };
 
     const tokenValue = tokenInput.value.trim();

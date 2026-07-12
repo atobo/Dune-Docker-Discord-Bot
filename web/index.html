@@ -47,6 +47,27 @@
         <input type="text" id="channel-id" placeholder="Enter channel ID for chat relay">
       </div>
 
+      <div class="form-group-section" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee;">
+        <h3>Playtime Airdrop Rewards</h3>
+        
+        <div class="form-group">
+          <label for="playtime-interval">Airdrop Interval: <span id="playtime-interval-val">60</span> minutes</label>
+          <input type="range" id="playtime-interval" min="1" max="120" value="60" style="width: 100%;">
+        </div>
+
+        <div class="form-group">
+          <label for="playtime-distance">Min Coordinate Move Threshold: <span id="playtime-distance-val">10</span> units</label>
+          <input type="range" id="playtime-distance" min="0" max="100" value="10" style="width: 100%;">
+          <small style="color: #666;">Set to 0 to disable coordinate checks (perfect for testing static/AFK players).</small>
+        </div>
+
+        <div class="form-group">
+          <label for="playtime-xp">Min XP Gain Threshold: <span id="playtime-xp-val">1</span> XP</label>
+          <input type="range" id="playtime-xp" min="0" max="1000" value="1" style="width: 100%;">
+          <small style="color: #666;">Set to 0 to disable XP gain activity checks.</small>
+        </div>
+      </div>
+
       <button type="submit" id="save-btn">Save Configuration</button>
     </form>
     <div id="status-message"></div>

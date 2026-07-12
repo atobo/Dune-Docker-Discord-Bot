@@ -35,6 +35,124 @@ const itemsList = require('./items.json');
 const { exec } = require('child_process');
 const http = require('http');
 
+// Global items store dynamically populated from admin-items.json
+const gameItems = {
+  tiers: {
+    0: { resources: [], gear: [], schematics: [] },
+    1: { resources: [], gear: [], schematics: [] },
+    2: { resources: [], gear: [], schematics: [] },
+    3: { resources: [], gear: [], schematics: [] },
+    4: { resources: [], gear: [], schematics: [] },
+    5: { resources: [], gear: [], schematics: [] },
+    6: { resources: [], gear: [], schematics: [] }
+  }
+};
+
+function loadGameItems() {
+  try {
+    const jsonPaths = [
+      path.join(__dirname, '../scratch-repo/runtime/data/admin-items.json'),
+      '/opt/dune-discord-bot/scratch-repo/runtime/data/admin-items.json',
+      path.join(__dirname, 'admin-items.json')
+    ];
+    let rawData = null;
+    for (const p of jsonPaths) {
+      if (fs.existsSync(p)) {
+        rawData = fs.readFileSync(p, 'utf8');
+        console.log(`[Loader] Successfully loaded items from: ${p}`);
+        break;
+      }
+    }
+
+    if (!rawData) {
+      console.warn('[Loader] Warning: admin-items.json not found. Playtime rewards will use fallback arrays.');
+      return;
+    }
+
+    const items = JSON.parse(rawData);
+    
+    // Reset lists
+    for (let t = 0; t <= 6; t++) {
+      gameItems.tiers[t] = { resources: [], gear: [], schematics: [] };
+    }
+
+    function getTier(item) {
+      const id = item.id.toLowerCase();
+      const name = item.name.toLowerCase();
+
+      // Resource keyword mappings
+      if (item.category === 'resources') {
+        if (id.includes('plastanium') || id.includes('chemicalreagent_t1')) return 6;
+        if (id.includes('duraluminum') || id.includes('duraluminium')) return 5;
+        if (id.includes('aluminum') || id.includes('aluminium')) return 4;
+        if (id.includes('steel')) return 3;
+        if (id.includes('iron') || id.includes('plasteel')) return 2;
+        if (id.includes('copper')) return 1;
+        if (id.includes('scrap')) return 0;
+      }
+
+      // Explicit keyword checks for armor/stillsuit progressions
+      if (id.includes('regis')) return 6;
+      if (id.includes('adept')) return 5;
+      if (id.includes('duneman')) return 3;
+      
+      if (id.includes('kirabstillsuit')) return 2;
+      if (id.includes('kirab')) return 1;
+      
+      if (id.includes('slaverstillsuit')) return 3;
+      if (id.includes('slaver')) return 2;
+      
+      if (id.includes('mercenarystillsuit')) return 5;
+      if (id.includes('mercenary')) return 4;
+      
+      if (id.includes('choamstillsuit')) return 6;
+      if (id.includes('choam')) return 5;
+
+      if (id.includes('scrap') || id.includes('makeshift')) return 0;
+
+      // Numeric tier indicators: _01_, _T1_, etc.
+      for (let t = 1; t <= 6; t++) {
+        if (id.includes(`_t${t}_`) || id.includes(`t${t}_`) || id.includes(`_t${t}`) ||
+            id.includes(`_0${t}_`) || id.endsWith(`_0${t}`) || id.includes(`t${t}schematic`)) {
+          return t;
+        }
+      }
+
+      // Suffix checks in name (e.g. "Mk2", "Mk6")
+      if (name.includes('mk6')) return 6;
+      if (name.includes('mk5')) return 5;
+      if (name.includes('mk4')) return 4;
+      if (name.includes('mk3')) return 3;
+      if (name.includes('mk2')) return 2;
+      if (name.includes('mk1')) return 1;
+
+      return 0;
+    }
+
+    items.forEach(item => {
+      const tier = getTier(item);
+      const cat = item.category;
+      
+      if (cat === 'resources') {
+        gameItems.tiers[tier].resources.push(item);
+      } else if (cat === 'schematics') {
+        gameItems.tiers[tier].schematics.push(item);
+      } else if (['clothing', 'weapons', 'vehicles'].includes(cat)) {
+        gameItems.tiers[tier].gear.push(item);
+      }
+    });
+
+    let totalLoaded = 0;
+    for (let t = 0; t <= 6; t++) {
+      const count = gameItems.tiers[t].resources.length + gameItems.tiers[t].gear.length + gameItems.tiers[t].schematics.length;
+      totalLoaded += count;
+    }
+    console.log(`[Loader] Classified ${totalLoaded} items into Tiers 0-6.`);
+  } catch (err) {
+    console.error('[Loader] Error parsing admin-items.json:', err.message);
+  }
+}
+
 // Initialize Discord Client
 const client = new Client({
   intents: [
@@ -55,6 +173,9 @@ let lootQueue = [];
 
 client.once('ready', async () => {
   console.log(`[Discord] Bot is online as ${client.user.tag}!`);
+  
+  // Load dynamic items database
+  loadGameItems();
   
   // Set custom rich presence activity
   client.user.setActivity('Arrakis', { type: ActivityType.Watching });
@@ -1307,7 +1428,21 @@ async function startBot() {
       ALTER TABLE dune.bot_pending_deliveries 
       ADD COLUMN IF NOT EXISTS quality_level INT DEFAULT 0
     `);
-    console.log('[Init] Verified and successfully initialized Airdrop Delivery database tables.');
+
+    // 4. Create the bot_active_playtime table for playtime reward tracking and anti-idle
+    await database.pool.query(`
+      CREATE TABLE IF NOT EXISTS dune.bot_active_playtime (
+        character_id BIGINT PRIMARY KEY,
+        active_seconds INT DEFAULT 0,
+        last_xp BIGINT DEFAULT 0,
+        last_x DOUBLE PRECISION DEFAULT 0.0,
+        last_y DOUBLE PRECISION DEFAULT 0.0,
+        last_z DOUBLE PRECISION DEFAULT 0.0,
+        last_checked TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    console.log('[Init] Verified and successfully initialized Airdrop Delivery and Playtime database tables.');
   } catch (err) {
     console.error('[Init] Failed to initialize database setup:', err.message);
   }
@@ -1320,23 +1455,37 @@ async function startBot() {
   // Track players' previous maps to detect zone changes
   const playerMapCache = {};
 
-  // Background interval check for map transitions and offline queue processing
+  // Background interval check for map transitions, playtime tracking, and offline queue processing
   setInterval(async () => {
     try {
-      // 1. Fetch active players, their maps, and online status
+      // Fetch latest configuration for playtime rewards and AFK thresholds
+      const configRes = await database.pool.query("SELECT config_value FROM dune.discord_bot_config WHERE config_key = 'main'");
+      let playtimeMinutes = 60;
+      let minDistance = 10.0;
+      let minXp = 1;
+      
+      if (configRes.rows.length > 0 && configRes.rows[0].config_value) {
+        const cfg = configRes.rows[0].config_value;
+        playtimeMinutes = cfg.PLAYTIME_INTERVAL !== undefined ? parseInt(cfg.PLAYTIME_INTERVAL) : 60;
+        minDistance = cfg.PLAYTIME_DISTANCE !== undefined ? parseFloat(cfg.PLAYTIME_DISTANCE) : 10.0;
+        minXp = cfg.PLAYTIME_XP !== undefined ? parseInt(cfg.PLAYTIME_XP) : 1;
+      }
+      playtimeMinutes = Math.max(1, playtimeMinutes); // Prevent division by zero or negative values
+
+      // 1. Fetch active players, their maps, online status, coordinates, and XP
       const res = await database.pool.query(`
-        SELECT ps.account_id, ps.player_pawn_id, act.map, ps.online_status::text as status
+        SELECT ps.account_id, ps.player_pawn_id, act.map, ps.online_status::text as status,
+               COALESCE((fe.components->'FLevelComponent'->1->>'TotalXPEarned')::bigint, 0) as xp,
+               act.transform
         FROM dune.player_state ps
         LEFT JOIN dune.actors act ON ps.player_pawn_id = act.id
+        LEFT JOIN dune.full_entities fe ON ps.player_pawn_id = fe.id
         WHERE ps.player_pawn_id IS NOT NULL
       `);
 
-      if (res.rows.length > 0) {
-        console.log(`[Airdrop Debug] Tick - fetched ${res.rows.length} player states. Nalita map: ${res.rows.find(r => r.account_id == 5)?.map || 'None'}`);
-      }
-
       for (const row of res.rows) {
         const accountId = row.account_id;
+        const pawnId = row.player_pawn_id;
         const currentMap = row.map;
         const isOnline = row.status === 'Online';
         const prev = playerMapCache[accountId];
@@ -1351,19 +1500,199 @@ async function startBot() {
 
           if (wasInDungeon && nowInOverworld) {
             console.log(`[Airdrop] Detected map transition for Account ${accountId}: ${prev.map} -> ${currentMap}`);
-            await checkAndQueueDungeonReward(accountId, prev.map, row.player_pawn_id);
+            await checkAndQueueDungeonReward(accountId, prev.map, pawnId);
           }
         }
 
-        // 2. If player is transitioning or offline, check and inject pending deliveries
+        // 2. Playtime & AFK Tracking (Only if player is online)
+        if (isOnline) {
+          // Extract translation coordinates safely
+          let x = 0.0, y = 0.0, z = 0.0;
+          if (row.transform) {
+            try {
+              const t = typeof row.transform === 'string' ? JSON.parse(row.transform) : row.transform;
+              if (t && t.Translation) {
+                x = parseFloat(t.Translation.X) || 0.0;
+                y = parseFloat(t.Translation.Y) || 0.0;
+                z = parseFloat(t.Translation.Z) || 0.0;
+              }
+            } catch (e) {}
+          }
+
+          // Query current tracking status
+          const trackRes = await database.pool.query(
+            "SELECT active_seconds, last_xp, last_x, last_y, last_z FROM dune.bot_active_playtime WHERE character_id = $1",
+            [pawnId]
+          );
+
+          let activeSeconds = 0;
+          let lastXp = 0;
+          let lastX = 0.0, lastY = 0.0, lastZ = 0.0;
+          let hasRecord = false;
+
+          if (trackRes.rows.length > 0) {
+            const tr = trackRes.rows[0];
+            activeSeconds = parseInt(tr.active_seconds) || 0;
+            lastXp = parseInt(tr.last_xp) || 0;
+            lastX = parseFloat(tr.last_x) || 0.0;
+            lastY = parseFloat(tr.last_y) || 0.0;
+            lastZ = parseFloat(tr.last_z) || 0.0;
+            hasRecord = true;
+          }
+
+          const currentXp = parseInt(row.xp) || 0;
+          const dist = Math.sqrt(Math.pow(x - lastX, 2) + Math.pow(y - lastY, 2) + Math.pow(z - lastZ, 2));
+          const xpDiff = currentXp - lastXp;
+
+          // Activity check rules
+          let isActive = false;
+          if (minDistance === 0 && minXp === 0) {
+            isActive = true; // Bypassed for debugging
+          } else {
+            if (minDistance > 0 && dist >= minDistance) isActive = true;
+            if (minXp > 0 && xpDiff >= minXp) isActive = true;
+          }
+
+          if (isActive) {
+            activeSeconds += 10; // Interval runs every 10s
+          }
+
+          // Check if threshold achieved
+          const targetSeconds = playtimeMinutes * 60;
+          if (activeSeconds >= targetSeconds) {
+            console.log(`[Playtime Rewards] Account ${accountId} hit playtime threshold of ${playtimeMinutes} minutes! Triggering reward drop.`);
+            activeSeconds = 0;
+            await rollPlaytimeReward(accountId, pawnId, currentXp);
+          }
+
+          // Save/Update stats
+          if (hasRecord) {
+            await database.pool.query(`
+              UPDATE dune.bot_active_playtime 
+              SET active_seconds = $2, last_xp = $3, last_x = $4, last_y = $5, last_z = $6, last_checked = CURRENT_TIMESTAMP
+              WHERE character_id = $1
+            `, [pawnId, activeSeconds, currentXp, x, y, z]);
+          } else {
+            await database.pool.query(`
+              INSERT INTO dune.bot_active_playtime (character_id, active_seconds, last_xp, last_x, last_y, last_z)
+              VALUES ($1, $2, $3, $4, $5, $6)
+            `, [pawnId, activeSeconds, currentXp, x, y, z]);
+          }
+        }
+
+        // 3. Check and inject pending deliveries
         if (!isOnline || (prev && prev.map !== currentMap)) {
-          await processPendingDeliveries(accountId, row.player_pawn_id);
+          await processPendingDeliveries(accountId, pawnId);
         }
       }
     } catch (error) {
-      console.error('[Airdrop] Error running transition check:', error.message);
+      console.error('[Airdrop] Error running interval checks:', error.message);
     }
   }, 10000);
+
+  // Helper: Roll and queue playtime-based rewards by character tier
+  async function rollPlaytimeReward(accountId, pawnId, xp) {
+    try {
+      const playerLevel = Math.min(200, Math.floor(Math.sqrt(xp / 100)) + 1 || 1);
+      
+      let tier = 0;
+      if (playerLevel >= 150) tier = 6;
+      else if (playerLevel >= 120) tier = 5;
+      else if (playerLevel >= 80) tier = 4;
+      else if (playerLevel >= 50) tier = 3;
+      else if (playerLevel >= 20) tier = 2;
+      else if (playerLevel >= 10) tier = 1;
+
+      console.log(`[Playtime Reward] Rolling Tier ${tier} reward pack for Level ${playerLevel} player (Account ${accountId}).`);
+
+      const pool = gameItems.tiers[tier];
+      const itemsToDeliver = [];
+
+      // Fallback arrays in case JSON loader is empty
+      const fallbackGear = {
+        0: ['MakeshiftClothing', 'ScrapMetalKnife'],
+        1: ['ScavengerStillsuit', 'KirabHeavyArmor'],
+        2: ['KirabStillsuit', 'StandardSword'],
+        3: ['SlaverStillsuit', 'ArtisanSword'],
+        4: ['NativeStillsuit', 'HouseSword'],
+        5: ['MercenaryStillsuit', 'AdeptSword'],
+        6: ['CHOAMStillsuit', 'RegisSword']
+      };
+      const fallbackResources = {
+        0: ['ScrapMetal'],
+        1: ['CopperOre'],
+        2: ['IronOre'],
+        3: ['SteelBar'],
+        4: ['AluminiumBar'],
+        5: ['Duraluminium'],
+        6: ['Plastanium']
+      };
+
+      // 1. Roll 1 Gear/Armor item
+      let rolledGear = null;
+      if (pool && pool.gear.length > 0) {
+        const idx = Math.floor(Math.random() * pool.gear.length);
+        rolledGear = pool.gear[idx].id;
+      } else {
+        const list = fallbackGear[tier];
+        rolledGear = list[Math.floor(Math.random() * list.length)];
+      }
+
+      let gearQuality = 0;
+      if (tier === 6) {
+        // Roll quality grade 1-5 for endgame Tier 6 items
+        const roll = Math.random() * 100;
+        if (roll < 5) gearQuality = 5;
+        else if (roll < 15) gearQuality = 4;
+        else if (roll < 35) gearQuality = 3;
+        else if (roll < 65) gearQuality = 2;
+        else gearQuality = 1;
+      }
+
+      itemsToDeliver.push({ template: rolledGear, qty: 1, quality: gearQuality });
+
+      // 2. Roll 2 unique resource stacks
+      const resourceCount = 2;
+      for (let i = 0; i < resourceCount; i++) {
+        let rolledRes = null;
+        if (pool && pool.resources.length > 0) {
+          const idx = Math.floor(Math.random() * pool.resources.length);
+          rolledRes = pool.resources[idx].id;
+        } else {
+          const list = fallbackResources[tier];
+          rolledRes = list[Math.floor(Math.random() * list.length)];
+        }
+        // Quantity scales slightly with level
+        const qty = Math.floor(Math.random() * 6) + 5 + Math.floor(playerLevel / 20);
+        itemsToDeliver.push({ template: rolledRes, qty, quality: 0 });
+      }
+
+      // 3. Roll 1 unique schematic (30% chance)
+      if (Math.random() <= 0.3) {
+        let rolledSchematic = null;
+        if (pool && pool.schematics.length > 0) {
+          const idx = Math.floor(Math.random() * pool.schematics.length);
+          rolledSchematic = pool.schematics[idx].id;
+          itemsToDeliver.push({ template: rolledSchematic, qty: 1, quality: 0 });
+        }
+      }
+
+      // Inject rolled rewards into deliveries queue
+      for (const item of itemsToDeliver) {
+        await database.pool.query(`
+          INSERT INTO dune.bot_pending_deliveries (account_id, template_id, stack_size, is_applied, quality_level)
+          VALUES ($1, $2, $3, false, $4)
+        `, [accountId, item.template, item.qty, item.quality]);
+      }
+
+      console.log(`[Playtime Reward] Successfully queued rewards for Account ${accountId}:`, JSON.stringify(itemsToDeliver));
+      
+      // Dispatch immediately if they are active on map
+      await processPendingDeliveries(accountId, pawnId);
+    } catch (err) {
+      console.error(`[Playtime Reward] Failed to roll and queue rewards:`, err.message);
+    }
+  }
 
   // Helper: Verify dungeon completion tag and queue reward crates
   async function checkAndQueueDungeonReward(accountId, dungeonMap, pawnId) {
