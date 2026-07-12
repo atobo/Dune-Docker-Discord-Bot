@@ -1234,8 +1234,9 @@ const server = http.createServer(async (req, res) => {
         const playtime_interval = parseInt(body.playtime_interval) !== undefined ? parseInt(body.playtime_interval) : 60;
         const playtime_distance = parseFloat(body.playtime_distance) !== undefined ? parseFloat(body.playtime_distance) : 10.0;
         const playtime_xp = parseInt(body.playtime_xp) !== undefined ? parseInt(body.playtime_xp) : 1;
+        const playtime_multiplier = parseInt(body.playtime_multiplier) !== undefined ? parseInt(body.playtime_multiplier) : 1;
         
-        if (isNaN(testing_stations) || testing_stations < 1 || isNaN(shipwrecks) || shipwrecks < 1 || isNaN(daily_allowance) || daily_allowance < 1 || isNaN(daily_cap) || daily_cap < 1 || isNaN(loot_grade_chance) || loot_grade_chance < 0) {
+        if (isNaN(testing_stations) || testing_stations < 1 || isNaN(shipwrecks) || shipwrecks < 1 || isNaN(daily_allowance) || daily_allowance < 1 || isNaN(daily_cap) || daily_cap < 1 || isNaN(loot_grade_chance) || loot_grade_chance < 0 || isNaN(playtime_multiplier) || playtime_multiplier < 1) {
           sendJsonResponse(res, 400, { success: false, error: 'Invalid multipliers values' });
           return;
         }
@@ -1249,7 +1250,8 @@ const server = http.createServer(async (req, res) => {
           loot_grade_chance,
           playtime_interval,
           playtime_distance,
-          playtime_xp
+          playtime_xp,
+          playtime_multiplier
         };
         await database.pool.query(
           "INSERT INTO dune.discord_bot_config (config_key, config_value) VALUES ('airdrop_multipliers', $1::jsonb) ON CONFLICT (config_key) DO UPDATE SET config_value = EXCLUDED.config_value",
@@ -1633,6 +1635,14 @@ async function startBot() {
   // Helper: Roll and queue playtime-based rewards by character tier
   async function rollPlaytimeReward(accountId, pawnId) {
     try {
+      const configRes = await database.pool.query("SELECT config_value FROM dune.discord_bot_config WHERE config_key = 'airdrop_multipliers'");
+      let playtimeMultiplier = 1;
+      if (configRes.rows.length > 0 && configRes.rows[0].config_value) {
+        const cfg = configRes.rows[0].config_value;
+        playtimeMultiplier = cfg.playtime_multiplier !== undefined ? parseInt(cfg.playtime_multiplier) : 1;
+      }
+      playtimeMultiplier = Math.max(1, playtimeMultiplier);
+
       const lvlRes = await database.pool.query(`
         SELECT COALESCE((fe.components->'FLevelComponent'->1->>'TotalXPEarned')::bigint, 0) as xp,
                COALESCE((fe.components->'FLevelComponent'->1->>'TotalSkillPoints')::int, 0) as skill_points,
@@ -1744,8 +1754,8 @@ async function startBot() {
           const list = fallbackResources[tier];
           rolledRes = list[Math.floor(Math.random() * list.length)];
         }
-        // Quantity scales slightly with level
-        const qty = Math.floor(Math.random() * 6) + 5 + Math.floor(playerLevel / 20);
+        // Quantity scales slightly with level and multiplier
+        const qty = Math.max(1, Math.round((Math.floor(Math.random() * 6) + 5 + Math.floor(playerLevel / 20)) * playtimeMultiplier));
         itemsToDeliver.push({ template: rolledRes, qty, quality: 0 });
       }
 
