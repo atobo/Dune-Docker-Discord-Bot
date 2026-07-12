@@ -1479,7 +1479,8 @@ async function startBot() {
                act.transform
         FROM dune.player_state ps
         LEFT JOIN dune.actors act ON ps.player_pawn_id = act.id
-        LEFT JOIN dune.full_entities fe ON ps.player_pawn_id = fe.id
+        LEFT JOIN dune.actor_fgl_entities afe ON afe.actor_id = ps.player_pawn_id AND afe.slot_name = 'DuneCharacter'
+        LEFT JOIN dune.fgl_entities fe ON fe.entity_id = afe.entity_id
         WHERE ps.player_pawn_id IS NOT NULL
       `);
 
