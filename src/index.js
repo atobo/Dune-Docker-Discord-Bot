@@ -1627,8 +1627,9 @@ async function startBot() {
         SELECT COALESCE((fe.components->'FLevelComponent'->1->>'TotalXPEarned')::bigint, 0) as xp,
                COALESCE((fe.components->'FLevelComponent'->1->>'TotalSkillPoints')::int, 0) as skill_points,
                COALESCE((fe.components->'FLevelComponent'->1->>'KeystoneBonusSkillPoints')::int, 0) as keystone_points
-        FROM dune.fgl_entities fe
-        WHERE fe.id = $1
+        FROM dune.actor_fgl_entities afe
+        LEFT JOIN dune.fgl_entities fe ON fe.entity_id = afe.entity_id
+        WHERE afe.actor_id = $1 AND afe.slot_name = 'DuneCharacter'
       `, [pawnId]);
       
       let xp = 0;
