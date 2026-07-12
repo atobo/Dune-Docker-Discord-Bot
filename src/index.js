@@ -1586,7 +1586,7 @@ async function startBot() {
           if (activeSeconds >= targetSeconds) {
             console.log(`[Playtime Rewards] Account ${accountId} hit playtime threshold of ${playtimeMinutes} minutes! Triggering reward drop.`);
             activeSeconds = 0;
-            await rollPlaytimeReward(accountId, pawnId, currentXp);
+            await rollPlaytimeReward(accountId, pawnId);
           }
 
           // Save/Update stats
@@ -1615,9 +1615,31 @@ async function startBot() {
   }, 10000);
 
   // Helper: Roll and queue playtime-based rewards by character tier
-  async function rollPlaytimeReward(accountId, pawnId, xp) {
+  async function rollPlaytimeReward(accountId, pawnId) {
     try {
-      const playerLevel = Math.min(200, Math.floor(Math.sqrt(xp / 100)) + 1 || 1);
+      const lvlRes = await database.pool.query(`
+        SELECT COALESCE((fe.components->'FLevelComponent'->1->>'TotalXPEarned')::bigint, 0) as xp,
+               COALESCE((fe.components->'FLevelComponent'->1->>'TotalSkillPoints')::int, 0) as skill_points,
+               COALESCE((fe.components->'FLevelComponent'->1->>'KeystoneBonusSkillPoints')::int, 0) as keystone_points
+        FROM dune.fgl_entities fe
+        WHERE fe.id = $1
+      `, [pawnId]);
+      
+      let xp = 0;
+      let skillPoints = 0;
+      let keystonePoints = 0;
+      if (lvlRes.rows.length > 0) {
+        xp = parseInt(lvlRes.rows[0].xp) || 0;
+        skillPoints = parseInt(lvlRes.rows[0].skill_points) || 0;
+        keystonePoints = parseInt(lvlRes.rows[0].keystone_points) || 0;
+      }
+      
+      let playerLevel = 1;
+      if (skillPoints > 0) {
+        playerLevel = Math.min(200, skillPoints - keystonePoints + 1);
+      } else {
+        playerLevel = Math.min(200, Math.floor(Math.sqrt(xp / 100)) + 1 || 1);
+      }
       
       let tier = 0;
       if (playerLevel >= 150) tier = 6;
