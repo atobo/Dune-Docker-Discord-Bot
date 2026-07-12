@@ -130,6 +130,31 @@ function loadGameItems() {
       return 0;
     }
 
+    function getTiersForResource(item) {
+      const id = item.id.toLowerCase();
+      
+      // Universal/Shared resources across multiple tiers
+      if (id === 'plantfiber' || id === 'stone') return [0, 1, 2, 3, 4, 5, 6];
+      if (id === 'silicone' || id === 'dolomiterock' || id === 'floursand' || id === 'melangespice' || id === 'basalt') return [1, 2, 3, 4, 5, 6];
+      
+      if (id === 'scrapmetal') return [0, 1, 2, 3];
+      if (id === 'weldingmaterial') return [1, 2, 3];
+      if (id === 'weldingmaterial3') return [3, 4, 5];
+      if (id === 'weldingmaterial5') return [5, 6];
+      
+      if (id === 'fuelcanister') return [1, 2, 3];
+      if (id === 'fuelcanister_medium') return [3, 4, 5];
+      if (id === 'fuelcanister_large') return [5, 6];
+      
+      if (id === 'windtrapfilter1') return [1, 2];
+      if (id === 'windtrapfilter2') return [3, 4];
+      if (id === 'windtrapfilter3') return [4, 5];
+      if (id === 'windtrapfilter4') return [5, 6];
+
+      // Default to single tier calculated from getTier
+      return [getTier(item)];
+    }
+
     items.forEach(item => {
       const tier = getTier(item);
       const cat = item.category;
@@ -139,12 +164,15 @@ function loadGameItems() {
         if (idLower.includes('fragment') || idLower.includes('pattern')) {
           // Augments and patterns/fragments are only useful and allowed for Tier 6 (level 150+)
           if (tier === 6 && (idLower.includes('ql4') || idLower.includes('ql5'))) {
-            // Keep QL4/5 fragments for Tier 6
-          } else {
-            return; // Exclude fragments entirely for Tiers 0-5
+            gameItems.tiers[6].resources.push(item);
           }
+          return; // Exclude fragments entirely for Tiers 0-5 or non-QL4/5
         }
-        gameItems.tiers[tier].resources.push(item);
+        
+        const tiers = getTiersForResource(item);
+        tiers.forEach(t => {
+          gameItems.tiers[t].resources.push(item);
+        });
       } else if (cat === 'schematics') {
         const idLower = item.id.toLowerCase();
         if (idLower.includes('dummy') || idLower.includes('placeholder') || idLower.includes('test') || idLower.includes('npe_')) {
