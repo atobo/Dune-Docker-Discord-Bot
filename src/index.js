@@ -1724,8 +1724,22 @@ async function startBot() {
       for (let i = 0; i < resourceCount; i++) {
         let rolledRes = null;
         if (pool && pool.resources.length > 0) {
-          const idx = Math.floor(Math.random() * pool.resources.length);
-          rolledRes = pool.resources[idx].id;
+          let attempts = 0;
+          while (attempts < 10) {
+            const idx = Math.floor(Math.random() * pool.resources.length);
+            const candidate = pool.resources[idx];
+            const isFragment = candidate.id.toLowerCase().includes('fragment') || candidate.id.toLowerCase().includes('pattern');
+            
+            // Only allow schematic fragments to succeed 20% of the time, otherwise roll for a raw material
+            if (!isFragment || Math.random() < 0.20) {
+              rolledRes = candidate.id;
+              break;
+            }
+            attempts++;
+          }
+          if (!rolledRes) {
+            rolledRes = pool.resources[Math.floor(Math.random() * pool.resources.length)].id;
+          }
         } else {
           const list = fallbackResources[tier];
           rolledRes = list[Math.floor(Math.random() * list.length)];
