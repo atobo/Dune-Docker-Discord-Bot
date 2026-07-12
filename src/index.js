@@ -284,16 +284,16 @@ async function setupLogWatcher() {
     interval: 1500,
     characterMap,
     onChat: async (player, message, channel) => {
-      const isAirdropCommand = message.trim().toLowerCase() === '/airdrop';
+      const isAirdropCommand = message.trim().toLowerCase() === '!airdrop';
       const channelStr = channel ? `[${channel}] ` : '';
       console.log(`[Relay] Game Chat: ${channelStr}<${player}> ${message}`);
       
-      // Filter out /airdrop commands from being relayed to Discord
+      // Filter out !airdrop commands from being relayed to Discord
       if (!isAirdropCommand) {
         relayToDiscord(`${channelStr}<**${player}**> ${message}`, '#E67E22'); // Warm orange for game chat
       }
       
-      // Listen for /airdrop command
+      // Listen for !airdrop command
       if (isAirdropCommand) {
         try {
           const charRes = await database.pool.query(
