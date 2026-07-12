@@ -284,12 +284,17 @@ async function setupLogWatcher() {
     interval: 1500,
     characterMap,
     onChat: async (player, message, channel) => {
+      const isAirdropCommand = message.trim().toLowerCase() === '/airdrop';
       const channelStr = channel ? `[${channel}] ` : '';
       console.log(`[Relay] Game Chat: ${channelStr}<${player}> ${message}`);
-      relayToDiscord(`${channelStr}<**${player}**> ${message}`, '#E67E22'); // Warm orange for game chat
+      
+      // Filter out /airdrop commands from being relayed to Discord
+      if (!isAirdropCommand) {
+        relayToDiscord(`${channelStr}<**${player}**> ${message}`, '#E67E22'); // Warm orange for game chat
+      }
       
       // Listen for /airdrop command
-      if (message.trim().toLowerCase() === '/airdrop') {
+      if (isAirdropCommand) {
         try {
           const charRes = await database.pool.query(
             "SELECT player_pawn_id AS actor_id FROM dune.encrypted_player_state WHERE LOWER(dune.decrypt_user_data(encrypted_character_name)) = LOWER($1)",
