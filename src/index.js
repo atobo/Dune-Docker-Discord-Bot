@@ -1186,7 +1186,17 @@ const server = http.createServer(async (req, res) => {
     else if (url === '/api/airdrop/multipliers' && method === 'GET') {
       try {
         const resDb = await database.pool.query("SELECT config_value FROM dune.discord_bot_config WHERE config_key = 'airdrop_multipliers'");
-        const multipliers = resDb.rows.length > 0 && resDb.rows[0].config_value ? resDb.rows[0].config_value : { testing_stations: 1, shipwrecks: 1, daily_allowance: 1, scaling_mode: 'quantity', daily_cap: 3, loot_grade_chance: 10 };
+        const multipliers = resDb.rows.length > 0 && resDb.rows[0].config_value ? resDb.rows[0].config_value : { 
+          testing_stations: 1, 
+          shipwrecks: 1, 
+          daily_allowance: 1, 
+          scaling_mode: 'quantity', 
+          daily_cap: 3, 
+          loot_grade_chance: 10,
+          playtime_interval: 60,
+          playtime_distance: 10.0,
+          playtime_xp: 1
+        };
         sendJsonResponse(res, 200, { success: true, multipliers });
       } catch (err) {
         sendJsonResponse(res, 500, { success: false, error: err.message });
@@ -1202,13 +1212,26 @@ const server = http.createServer(async (req, res) => {
         const daily_cap = parseInt(body.daily_cap);
         const loot_grade_chance = parseInt(body.loot_grade_chance);
         const scaling_mode = body.scaling_mode || 'quantity';
+        const playtime_interval = parseInt(body.playtime_interval) !== undefined ? parseInt(body.playtime_interval) : 60;
+        const playtime_distance = parseFloat(body.playtime_distance) !== undefined ? parseFloat(body.playtime_distance) : 10.0;
+        const playtime_xp = parseInt(body.playtime_xp) !== undefined ? parseInt(body.playtime_xp) : 1;
         
         if (isNaN(testing_stations) || testing_stations < 1 || isNaN(shipwrecks) || shipwrecks < 1 || isNaN(daily_allowance) || daily_allowance < 1 || isNaN(daily_cap) || daily_cap < 1 || isNaN(loot_grade_chance) || loot_grade_chance < 0) {
           sendJsonResponse(res, 400, { success: false, error: 'Invalid multipliers values' });
           return;
         }
 
-        const multipliers = { testing_stations, shipwrecks, daily_allowance, scaling_mode, daily_cap, loot_grade_chance };
+        const multipliers = { 
+          testing_stations, 
+          shipwrecks, 
+          daily_allowance, 
+          scaling_mode, 
+          daily_cap, 
+          loot_grade_chance,
+          playtime_interval,
+          playtime_distance,
+          playtime_xp
+        };
         await database.pool.query(
           "INSERT INTO dune.discord_bot_config (config_key, config_value) VALUES ('airdrop_multipliers', $1::jsonb) ON CONFLICT (config_key) DO UPDATE SET config_value = EXCLUDED.config_value",
           [JSON.stringify(multipliers)]
@@ -1459,16 +1482,16 @@ async function startBot() {
   setInterval(async () => {
     try {
       // Fetch latest configuration for playtime rewards and AFK thresholds
-      const configRes = await database.pool.query("SELECT config_value FROM dune.discord_bot_config WHERE config_key = 'main'");
+      const configRes = await database.pool.query("SELECT config_value FROM dune.discord_bot_config WHERE config_key = 'airdrop_multipliers'");
       let playtimeMinutes = 60;
       let minDistance = 10.0;
       let minXp = 1;
       
       if (configRes.rows.length > 0 && configRes.rows[0].config_value) {
         const cfg = configRes.rows[0].config_value;
-        playtimeMinutes = cfg.PLAYTIME_INTERVAL !== undefined ? parseInt(cfg.PLAYTIME_INTERVAL) : 60;
-        minDistance = cfg.PLAYTIME_DISTANCE !== undefined ? parseFloat(cfg.PLAYTIME_DISTANCE) : 10.0;
-        minXp = cfg.PLAYTIME_XP !== undefined ? parseInt(cfg.PLAYTIME_XP) : 1;
+        playtimeMinutes = cfg.playtime_interval !== undefined ? parseInt(cfg.playtime_interval) : 60;
+        minDistance = cfg.playtime_distance !== undefined ? parseFloat(cfg.playtime_distance) : 10.0;
+        minXp = cfg.playtime_xp !== undefined ? parseInt(cfg.playtime_xp) : 1;
       }
       playtimeMinutes = Math.max(1, playtimeMinutes); // Prevent division by zero or negative values
 
