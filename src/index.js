@@ -1701,25 +1701,27 @@ async function startBot() {
         6: ['Plastanium']
       };
 
-      // 1. Roll 1 Gear/Armor item
-      let rolledGear = null;
-      if (pool && pool.gear.length > 0) {
-        const idx = Math.floor(Math.random() * pool.gear.length);
-        rolledGear = pool.gear[idx].id;
-      } else {
-        const list = fallbackGear[tier];
-        rolledGear = list[Math.floor(Math.random() * list.length)];
-      }
+      // 1. Roll 1 Gear/Armor item (40% chance instead of 100%)
+      if (Math.random() <= 0.4) {
+        let rolledGear = null;
+        if (pool && pool.gear.length > 0) {
+          const idx = Math.floor(Math.random() * pool.gear.length);
+          rolledGear = pool.gear[idx].id;
+        } else {
+          const list = fallbackGear[tier];
+          rolledGear = list[Math.floor(Math.random() * list.length)];
+        }
 
-      let gearQuality = 0;
-      if (tier === 6) {
-        // Cap playtime rewards to a maximum quality grade of 2 (preserving high-grade QL3-5 for dungeons)
-        const roll = Math.random() * 100;
-        if (roll < 35) gearQuality = 2;
-        else gearQuality = 1;
-      }
+        let gearQuality = 0;
+        if (tier === 6) {
+          // Cap playtime rewards to a maximum quality grade of 2 (preserving high-grade QL3-5 for dungeons)
+          const roll = Math.random() * 100;
+          if (roll < 35) gearQuality = 2;
+          else gearQuality = 1;
+        }
 
-      itemsToDeliver.push({ template: rolledGear, qty: 1, quality: gearQuality });
+        itemsToDeliver.push({ template: rolledGear, qty: 1, quality: gearQuality });
+      }
 
       // 2. Roll 2 unique resource stacks
       const resourceCount = 2;
@@ -1759,8 +1761,8 @@ async function startBot() {
         itemsToDeliver.push({ template: rolledRes, qty, quality: 0 });
       }
 
-      // 3. Roll 1 unique schematic (30% chance)
-      if (Math.random() <= 0.3) {
+      // 3. Roll 1 unique schematic (80% chance instead of 30%)
+      if (Math.random() <= 0.8) {
         let rolledSchematic = null;
         if (pool && pool.schematics.length > 0) {
           const idx = Math.floor(Math.random() * pool.schematics.length);
