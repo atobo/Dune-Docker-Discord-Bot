@@ -1366,19 +1366,54 @@ async function startBot() {
         level: 200,
         tag: 'Contract.Tracking.Journey.EcolabCompleted', // Updated to match game DB tag
         lootPool: [
-          // Resources
-          { template: 'ChemicalReagent_T1', chance: 0.8, min: 5, max: 15 },
-          { template: 'StandardAmmo', chance: 0.7, min: 20, max: 50 },
-          { template: 'IronOre', chance: 0.6, min: 15, max: 30 },
-          { template: 'AzuriteOre', chance: 0.5, min: 10, max: 20 },
-          { template: 'BauxiteOre', chance: 0.5, min: 10, max: 25 },
-          { template: 'AluminiumBar', chance: 0.4, min: 5, max: 12 },
-          { template: 'AntiRadiationPill', chance: 0.4, min: 2, max: 5 },
-          { template: 'Bloodsack_02', chance: 0.3, min: 1, max: 3 },
-          { template: 'BodyFluidExtractor_02', chance: 0.3, min: 1, max: 2 },
-          { template: 'Binoculars_1', chance: 0.2, min: 1, max: 1 },
-          // Elite weapons/gear
-          { template: 'AtreSmg5', chance: 0.15, min: 1, max: 1 }
+          // 100% Drops (Resources)
+          { template: 'AdvancedServos', chance: 1.0, min: 1, max: 3 },
+          { template: 'ChemicalReagent_T1', chance: 1.0, min: 5, max: 15 }, // Spice-infused Plastanium Dust
+          { template: 'ParticleCapacitor', chance: 1.0, min: 1, max: 3 },
+          
+          // 55% Drops (Resources)
+          { template: 'AtmosphericFilteredFabric', chance: 0.55, min: 2, max: 6 },
+          { template: 'ImprovedWatertube', chance: 0.55, min: 2, max: 6 },
+          { template: 'IrradiatedCore', chance: 0.55, min: 1, max: 3 },
+          { template: 'OverclockedPowerRegulator', chance: 0.55, min: 1, max: 3 },
+          { template: 'PlasteelCompositeArmorPlating', chance: 0.55, min: 2, max: 5 },
+          { template: 'PlasteelCompositeBladeParts', chance: 0.55, min: 2, max: 5 },
+          { template: 'PlasteelCompositeGunParts', chance: 0.55, min: 2, max: 5 },
+          { template: 'ThermoResponsiveRayAmplifier', chance: 0.55, min: 1, max: 3 },
+          
+          // 30% Drops
+          { template: 'PlasteelPlate', chance: 0.30, min: 5, max: 15 },
+          
+          // 3% Drops (Rare tech parts)
+          { template: 'AdvancedMachinery', chance: 0.03, min: 1, max: 2 },
+          { template: 'BallisticWeaveFabric', chance: 0.03, min: 1, max: 2 },
+          { template: 'CarbideBladeParts', chance: 0.03, min: 1, max: 3 },
+          { template: 'DiamondineBladeParts', chance: 0.03, min: 1, max: 3 },
+          { template: 'FluidEfficientIndustrialPump', chance: 0.03, min: 1, max: 2 },
+          { template: 'FlutedHeavyCaliberCompressor', chance: 0.03, min: 1, max: 2 },
+          { template: 'FlutedLightCaliberCompressor', chance: 0.03, min: 1, max: 2 },
+          { template: 'ImprovedHoltzmanActuator', chance: 0.03, min: 1, max: 2 },
+          { template: 'PrecisionRangeFinder', chance: 0.03, min: 1, max: 2 },
+          { template: 'TriForgedHydraulicPiston', chance: 0.03, min: 1, max: 2 },
+
+          // Weapons (11% - 13%)
+          { template: 'RegisTripleshotRepeatingRifle', chance: 0.11, min: 1, max: 1 },
+          { template: 'ExperimentalLightningGun', chance: 0.13, min: 1, max: 1 },
+          { template: 'PlasmaCannon', chance: 0.11, min: 1, max: 1 },
+          { template: 'BasharsCommand', chance: 0.11, min: 1, max: 1 },
+          { template: 'IndarasLullaby', chance: 0.11, min: 1, max: 1 },
+          { template: 'SalusanVengeance', chance: 0.11, min: 1, max: 1 },
+          { template: 'TheAncientWay', chance: 0.03, min: 1, max: 1 },
+          
+          // Garments/Armor (11% - 13%)
+          { template: 'CircuitGauntlets', chance: 0.13, min: 1, max: 1 },
+          { template: 'PowerHarness', chance: 0.13, min: 1, max: 1 },
+          { template: 'ForgeBoots', chance: 0.11, min: 1, max: 1 },
+          { template: 'ForgeChestpiece', chance: 0.11, min: 1, max: 1 },
+          { template: 'ForgeGloves', chance: 0.11, min: 1, max: 1 },
+          { template: 'ForgeHelmet', chance: 0.11, min: 1, max: 1 },
+          { template: 'ForgePants', chance: 0.11, min: 1, max: 1 },
+          { template: 'IdahosCharge', chance: 0.13, min: 1, max: 1 }
         ],
         category: 'testing_stations'
       },
@@ -1387,19 +1422,54 @@ async function startBot() {
         level: 200,
         tag: 'Contract.Tracking.Journey.EcolabCompleted', // Updated to match game DB tag
         lootPool: [
-          // Resources
-          { template: 'ChemicalReagent_T1', chance: 0.8, min: 5, max: 15 },
-          { template: 'StandardAmmo', chance: 0.7, min: 20, max: 50 },
-          { template: 'IronOre', chance: 0.6, min: 15, max: 30 },
-          { template: 'AzuriteOre', chance: 0.5, min: 10, max: 20 },
-          { template: 'BauxiteOre', chance: 0.5, min: 10, max: 25 },
-          { template: 'AluminiumBar', chance: 0.4, min: 5, max: 12 },
-          { template: 'AntiRadiationPill', chance: 0.4, min: 2, max: 5 },
-          { template: 'Bloodsack_02', chance: 0.3, min: 1, max: 3 },
-          { template: 'BodyFluidExtractor_02', chance: 0.3, min: 1, max: 2 },
-          { template: 'Binoculars_1', chance: 0.2, min: 1, max: 1 },
-          // Elite weapons/gear
-          { template: 'AtreSmg5', chance: 0.15, min: 1, max: 1 }
+          // 100% Drops (Resources)
+          { template: 'AdvancedServos', chance: 1.0, min: 1, max: 3 },
+          { template: 'ChemicalReagent_T1', chance: 1.0, min: 5, max: 15 }, // Spice-infused Plastanium Dust
+          { template: 'ParticleCapacitor', chance: 1.0, min: 1, max: 3 },
+          
+          // 55% Drops (Resources)
+          { template: 'AtmosphericFilteredFabric', chance: 0.55, min: 2, max: 6 },
+          { template: 'ImprovedWatertube', chance: 0.55, min: 2, max: 6 },
+          { template: 'IrradiatedCore', chance: 0.55, min: 1, max: 3 },
+          { template: 'OverclockedPowerRegulator', chance: 0.55, min: 1, max: 3 },
+          { template: 'PlasteelCompositeArmorPlating', chance: 0.55, min: 2, max: 5 },
+          { template: 'PlasteelCompositeBladeParts', chance: 0.55, min: 2, max: 5 },
+          { template: 'PlasteelCompositeGunParts', chance: 0.55, min: 2, max: 5 },
+          { template: 'ThermoResponsiveRayAmplifier', chance: 0.55, min: 1, max: 3 },
+          
+          // 30% Drops
+          { template: 'PlasteelPlate', chance: 0.30, min: 5, max: 15 },
+          
+          // 3% Drops (Rare tech parts)
+          { template: 'AdvancedMachinery', chance: 0.03, min: 1, max: 2 },
+          { template: 'BallisticWeaveFabric', chance: 0.03, min: 1, max: 2 },
+          { template: 'CarbideBladeParts', chance: 0.03, min: 1, max: 3 },
+          { template: 'DiamondineBladeParts', chance: 0.03, min: 1, max: 3 },
+          { template: 'FluidEfficientIndustrialPump', chance: 0.03, min: 1, max: 2 },
+          { template: 'FlutedHeavyCaliberCompressor', chance: 0.03, min: 1, max: 2 },
+          { template: 'FlutedLightCaliberCompressor', chance: 0.03, min: 1, max: 2 },
+          { template: 'ImprovedHoltzmanActuator', chance: 0.03, min: 1, max: 2 },
+          { template: 'PrecisionRangeFinder', chance: 0.03, min: 1, max: 2 },
+          { template: 'TriForgedHydraulicPiston', chance: 0.03, min: 1, max: 2 },
+
+          // Weapons (11% - 13%)
+          { template: 'RegisTripleshotRepeatingRifle', chance: 0.11, min: 1, max: 1 },
+          { template: 'ExperimentalLightningGun', chance: 0.13, min: 1, max: 1 },
+          { template: 'PlasmaCannon', chance: 0.11, min: 1, max: 1 },
+          { template: 'BasharsCommand', chance: 0.11, min: 1, max: 1 },
+          { template: 'IndarasLullaby', chance: 0.11, min: 1, max: 1 },
+          { template: 'SalusanVengeance', chance: 0.11, min: 1, max: 1 },
+          { template: 'TheAncientWay', chance: 0.03, min: 1, max: 1 },
+          
+          // Garments/Armor (11% - 13%)
+          { template: 'CircuitGauntlets', chance: 0.13, min: 1, max: 1 },
+          { template: 'PowerHarness', chance: 0.13, min: 1, max: 1 },
+          { template: 'ForgeBoots', chance: 0.11, min: 1, max: 1 },
+          { template: 'ForgeChestpiece', chance: 0.11, min: 1, max: 1 },
+          { template: 'ForgeGloves', chance: 0.11, min: 1, max: 1 },
+          { template: 'ForgeHelmet', chance: 0.11, min: 1, max: 1 },
+          { template: 'ForgePants', chance: 0.11, min: 1, max: 1 },
+          { template: 'IdahosCharge', chance: 0.13, min: 1, max: 1 }
         ],
         category: 'testing_stations'
       }
