@@ -153,8 +153,8 @@ function loadGameItems() {
         gameItems.tiers[tier].schematics.push(item);
       } else if (['clothing', 'weapons', 'vehicles'].includes(cat)) {
         const idLower = item.id.toLowerCase();
-        // Augments only fit on T6 unique items, exclude them for sub-Tier 6 players (level < 150)
-        if (idLower.includes('augment') && tier < 6) {
+        // Exclude actual augments entirely from the gear pool so only their schematics drop
+        if (idLower.includes('augment')) {
           return;
         }
         gameItems.tiers[tier].gear.push(item);
