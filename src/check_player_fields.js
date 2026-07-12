@@ -12,9 +12,9 @@ const pool = new Pool({
 async function main() {
   try {
     const res = await pool.query(`
-      SELECT * FROM dune.player_state WHERE character_name = 'Nalita' LIMIT 1;
+      SELECT id, class, transform::text, properties::text FROM dune.actors WHERE id = 7 LIMIT 1;
     `);
-    console.log("Player State details for Nalita:");
+    console.log("Actor details for Pawn ID 7:");
     console.log(JSON.stringify(res.rows[0], null, 2));
   } catch (err) {
     console.error("Error:", err.message);
