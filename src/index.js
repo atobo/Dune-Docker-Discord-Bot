@@ -1280,9 +1280,22 @@ const server = http.createServer(async (req, res) => {
         const playtime_interval = parseInt(body.playtime_interval) !== undefined ? parseInt(body.playtime_interval) : 60;
         const playtime_distance = parseFloat(body.playtime_distance) !== undefined ? parseFloat(body.playtime_distance) : 10.0;
         const playtime_xp = parseInt(body.playtime_xp) !== undefined ? parseInt(body.playtime_xp) : 1;
-        const playtime_multiplier = parseInt(body.playtime_multiplier) !== undefined ? parseInt(body.playtime_multiplier) : 1;
+        const playtime_multiplier_t0 = body.playtime_multiplier_t0 !== undefined ? parseInt(body.playtime_multiplier_t0) : 1;
+        const playtime_multiplier_t1 = body.playtime_multiplier_t1 !== undefined ? parseInt(body.playtime_multiplier_t1) : 1;
+        const playtime_multiplier_t2 = body.playtime_multiplier_t2 !== undefined ? parseInt(body.playtime_multiplier_t2) : 1;
+        const playtime_multiplier_t3 = body.playtime_multiplier_t3 !== undefined ? parseInt(body.playtime_multiplier_t3) : 1;
+        const playtime_multiplier_t4 = body.playtime_multiplier_t4 !== undefined ? parseInt(body.playtime_multiplier_t4) : 1;
+        const playtime_multiplier_t5 = body.playtime_multiplier_t5 !== undefined ? parseInt(body.playtime_multiplier_t5) : 1;
+        const playtime_multiplier_t6 = body.playtime_multiplier_t6 !== undefined ? parseInt(body.playtime_multiplier_t6) : 1;
         
-        if (isNaN(testing_stations) || testing_stations < 1 || isNaN(shipwrecks) || shipwrecks < 1 || isNaN(daily_allowance) || daily_allowance < 1 || isNaN(daily_cap) || daily_cap < 1 || isNaN(loot_grade_chance) || loot_grade_chance < 0 || isNaN(playtime_multiplier) || playtime_multiplier < 1) {
+        if (isNaN(testing_stations) || testing_stations < 1 || isNaN(shipwrecks) || shipwrecks < 1 || isNaN(daily_allowance) || daily_allowance < 1 || isNaN(daily_cap) || daily_cap < 1 || isNaN(loot_grade_chance) || loot_grade_chance < 0 ||
+            isNaN(playtime_multiplier_t0) || playtime_multiplier_t0 < 1 ||
+            isNaN(playtime_multiplier_t1) || playtime_multiplier_t1 < 1 ||
+            isNaN(playtime_multiplier_t2) || playtime_multiplier_t2 < 1 ||
+            isNaN(playtime_multiplier_t3) || playtime_multiplier_t3 < 1 ||
+            isNaN(playtime_multiplier_t4) || playtime_multiplier_t4 < 1 ||
+            isNaN(playtime_multiplier_t5) || playtime_multiplier_t5 < 1 ||
+            isNaN(playtime_multiplier_t6) || playtime_multiplier_t6 < 1) {
           sendJsonResponse(res, 400, { success: false, error: 'Invalid multipliers values' });
           return;
         }
@@ -1297,7 +1310,14 @@ const server = http.createServer(async (req, res) => {
           playtime_interval,
           playtime_distance,
           playtime_xp,
-          playtime_multiplier
+          playtime_multiplier: playtime_multiplier_t6, // Fallback
+          playtime_multiplier_t0,
+          playtime_multiplier_t1,
+          playtime_multiplier_t2,
+          playtime_multiplier_t3,
+          playtime_multiplier_t4,
+          playtime_multiplier_t5,
+          playtime_multiplier_t6
         };
         await database.pool.query(
           "INSERT INTO dune.discord_bot_config (config_key, config_value) VALUES ('airdrop_multipliers', $1::jsonb) ON CONFLICT (config_key) DO UPDATE SET config_value = EXCLUDED.config_value",
@@ -1768,12 +1788,6 @@ async function startBot() {
   async function rollPlaytimeReward(accountId, pawnId) {
     try {
       const configRes = await database.pool.query("SELECT config_value FROM dune.discord_bot_config WHERE config_key = 'airdrop_multipliers'");
-      let playtimeMultiplier = 1;
-      if (configRes.rows.length > 0 && configRes.rows[0].config_value) {
-        const cfg = configRes.rows[0].config_value;
-        playtimeMultiplier = cfg.playtime_multiplier !== undefined ? parseInt(cfg.playtime_multiplier) : 1;
-      }
-      playtimeMultiplier = Math.max(1, playtimeMultiplier);
 
       const lvlRes = await database.pool.query(`
         SELECT COALESCE((fe.components->'FLevelComponent'->1->>'TotalXPEarned')::bigint, 0) as xp,
@@ -1808,7 +1822,16 @@ async function startBot() {
       else if (playerLevel >= 20) tier = 2;
       else if (playerLevel >= 10) tier = 1;
 
-      console.log(`[Playtime Reward] Rolling Tier ${tier} reward pack for Level ${playerLevel} player (Account ${accountId}).`);
+      // Resolve dynamic tier playtime multiplier
+      let playtimeMultiplier = 1;
+      if (configRes.rows.length > 0 && configRes.rows[0].config_value) {
+        const cfg = configRes.rows[0].config_value;
+        const key = `playtime_multiplier_t${tier}`;
+        playtimeMultiplier = cfg[key] !== undefined ? parseInt(cfg[key]) : (cfg.playtime_multiplier !== undefined ? parseInt(cfg.playtime_multiplier) : 1);
+      }
+      playtimeMultiplier = Math.max(1, playtimeMultiplier);
+
+      console.log(`[Playtime Reward] Rolling Tier ${tier} reward pack for Level ${playerLevel} player (Account ${accountId}) with multiplier x${playtimeMultiplier}.`);
 
       const pool = gameItems.tiers[tier];
       const itemsToDeliver = [];
