@@ -135,7 +135,8 @@ function loadGameItems() {
       
       // Universal/Shared resources across multiple tiers
       if (id === 'plantfiber' || id === 'stone') return [0, 1, 2, 3, 4, 5, 6];
-      if (id === 'silicone' || id === 'dolomiterock' || id === 'floursand' || id === 'melangespice' || id === 'basalt') return [1, 2, 3, 4, 5, 6];
+      if (id === 'silicone' || id === 'dolomiterock' || id === 'floursand' || id === 'basalt') return [1, 2, 3, 4, 5, 6];
+      if (id === 'melangespice') return [6];
       
       if (id === 'scrapmetal') return [0, 1, 2, 3];
       if (id === 'weldingmaterial') return [1, 2, 3];
