@@ -136,17 +136,11 @@ function loadGameItems() {
       if (cat === 'resources') {
         const idLower = item.id.toLowerCase();
         if (idLower.includes('fragment') || idLower.includes('pattern')) {
-          // Keep only high-end schematic patterns relevant to each tier to prevent clutter
+          // Augments and patterns/fragments are only useful and allowed for Tier 6 (level 150+)
           if (tier === 6 && (idLower.includes('ql4') || idLower.includes('ql5'))) {
             // Keep QL4/5 fragments for Tier 6
-          } else if (tier === 5 && (idLower.includes('ql3') || idLower.includes('ql4'))) {
-            // Keep QL3/4 fragments for Tier 5
-          } else if (tier === 4 && (idLower.includes('ql2') || idLower.includes('ql3'))) {
-            // Keep QL2/3 fragments for Tier 4
-          } else if (tier === 3 && (idLower.includes('ql1') || idLower.includes('ql2'))) {
-            // Keep QL1/2 fragments for Tier 3
           } else {
-            return;
+            return; // Exclude fragments entirely for Tiers 0-5
           }
         }
         gameItems.tiers[tier].resources.push(item);
@@ -157,6 +151,11 @@ function loadGameItems() {
         }
         gameItems.tiers[tier].schematics.push(item);
       } else if (['clothing', 'weapons', 'vehicles'].includes(cat)) {
+        const idLower = item.id.toLowerCase();
+        // Augments only fit on T6 unique items, exclude them for sub-Tier 6 players (level < 150)
+        if (idLower.includes('augment') && tier < 6) {
+          return;
+        }
         gameItems.tiers[tier].gear.push(item);
       }
     });
