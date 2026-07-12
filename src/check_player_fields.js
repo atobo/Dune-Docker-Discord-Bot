@@ -12,14 +12,9 @@ const pool = new Pool({
 async function main() {
   try {
     const res = await pool.query(`
-      SELECT ps.character_name, fe.components->'FLevelComponent' as level_comp
-      FROM dune.player_state ps
-      LEFT JOIN dune.actor_fgl_entities afe ON afe.actor_id = ps.player_pawn_id AND afe.slot_name = 'DuneCharacter'
-      LEFT JOIN dune.fgl_entities fe ON fe.entity_id = afe.entity_id
-      WHERE ps.character_name = 'Nalita'
-      LIMIT 1;
+      SELECT * FROM dune.player_state WHERE character_name = 'Nalita' LIMIT 1;
     `);
-    console.log("Player level component details for Nalita:");
+    console.log("Player State details for Nalita:");
     console.log(JSON.stringify(res.rows[0], null, 2));
   } catch (err) {
     console.error("Error:", err.message);
