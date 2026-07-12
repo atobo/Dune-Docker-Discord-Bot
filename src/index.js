@@ -283,10 +283,47 @@ async function setupLogWatcher() {
     isDocker,
     interval: 1500,
     characterMap,
-    onChat: (player, message, channel) => {
+    onChat: async (player, message, channel) => {
       const channelStr = channel ? `[${channel}] ` : '';
       console.log(`[Relay] Game Chat: ${channelStr}<${player}> ${message}`);
       relayToDiscord(`${channelStr}<**${player}**> ${message}`, '#E67E22'); // Warm orange for game chat
+      
+      // Listen for /airdrop command
+      if (message.trim().toLowerCase() === '/airdrop') {
+        try {
+          const charRes = await database.pool.query(
+            "SELECT player_pawn_id AS actor_id FROM dune.encrypted_player_state WHERE LOWER(dune.decrypt_user_data(encrypted_character_name)) = LOWER($1)",
+            [player]
+          );
+          if (charRes.rows.length > 0) {
+            const actorId = charRes.rows[0].actor_id;
+            const playRes = await database.pool.query(
+              "SELECT active_seconds FROM dune.bot_active_playtime WHERE character_id = $1",
+              [actorId]
+            );
+            const configRes = await database.pool.query("SELECT config_value FROM dune.discord_bot_config WHERE config_key = 'airdrop_multipliers'");
+            let playtimeMinutes = 60;
+            if (configRes.rows.length > 0 && configRes.rows[0].config_value) {
+              const cfg = configRes.rows[0].config_value;
+              playtimeMinutes = cfg.playtime_interval !== undefined ? parseInt(cfg.playtime_interval) : 60;
+            }
+            const activeSeconds = playRes.rows.length > 0 ? parseInt(playRes.rows[0].active_seconds) : 0;
+            const targetSeconds = playtimeMinutes * 60;
+            const remainingSeconds = Math.max(0, targetSeconds - activeSeconds);
+            const remainingMinutes = Math.ceil(remainingSeconds / 60);
+            
+            let reply = '';
+            if (remainingSeconds <= 0) {
+              reply = `[Airdrop] ${player}, your playtime threshold is achieved! Airdrop is ready for delivery.`;
+            } else {
+              reply = `[Airdrop] ${player}, you have ${remainingMinutes} minute(s) of active play left until your next airdrop.`;
+            }
+            await rabbitmq.sendServerCommand('chat', reply);
+          }
+        } catch (err) {
+          console.error('[Airdrop Chat Command] Error checking airdrop status:', err.message);
+        }
+      }
     },
     onJoin: (player) => {
       console.log(`[Relay] Player Join: ${player}`);
@@ -1983,6 +2020,17 @@ async function startBot() {
         );
       }
       console.log(`[Airdrop] Delivered all pending items successfully.`);
+      
+      // Notify the player in-game to relog
+      const nameRes = await database.pool.query(
+        "SELECT character_name FROM dune.player_state WHERE account_id = $1 LIMIT 1",
+        [accountId]
+      );
+      if (nameRes.rows.length > 0) {
+        const charName = nameRes.rows[0].character_name;
+        const msg = `[Airdrop] ${charName}, your playtime rewards have been delivered to your inventory! Please relog to see the changes.`;
+        await rabbitmq.sendServerCommand('chat', msg);
+      }
     } catch (err) {
       console.error(`[Airdrop] Failed to process pending deliveries for Account ${accountId}:`, err.message);
     }
