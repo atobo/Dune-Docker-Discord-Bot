@@ -1297,8 +1297,15 @@ async function startBot() {
         template_id TEXT NOT NULL,
         stack_size INT NOT NULL,
         is_applied BOOLEAN DEFAULT FALSE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        quality_level INT DEFAULT 0
       )
+    `);
+
+    // Ensure quality_level column exists in older installations
+    await database.pool.query(`
+      ALTER TABLE dune.bot_pending_deliveries 
+      ADD COLUMN IF NOT EXISTS quality_level INT DEFAULT 0
     `);
     console.log('[Init] Verified and successfully initialized Airdrop Delivery database tables.');
   } catch (err) {
@@ -1551,14 +1558,68 @@ async function startBot() {
       }
 
       if (penalty > 0) {
+        // Fetch the last completed run difficulty for this player pawn/actor ID in this dungeon
+        let difficulty = 5; // Default fallback difficulty
+        try {
+          const completionRes = await database.pool.query(`
+            SELECT dc.difficulty 
+            FROM dune.dungeon_completion dc
+            JOIN dune.dungeon_completion_players dcp ON dc.completion_id = dcp.completion_id
+            WHERE dcp.player_id = $1 AND (dc.dungeon_id = $2 OR dc.dungeon_id = 'CB_Ecolab_Bronze_Green_152' OR dc.dungeon_id = 'ElectricityDungeon')
+            ORDER BY dc.completion_id DESC 
+            LIMIT 1
+          `, [pawnId, dungeonMap]);
+          
+          if (completionRes.rows.length > 0) {
+            difficulty = parseInt(completionRes.rows[0].difficulty) || 5;
+            console.log(`[Airdrop] Found completed run difficulty: ${difficulty} for player actor ${pawnId}`);
+          } else {
+            console.log(`[Airdrop] No completion record found for player actor ${pawnId}. Defaulting difficulty to 5.`);
+          }
+        } catch (dbErr) {
+          console.warn(`[Airdrop] Failed to query dungeon difficulty (defaulting to 5):`, dbErr.message);
+        }
+
         // Roll items from lootPool
         const rolledLoot = [];
         const rolledResources = [];
 
         for (const item of config.lootPool) {
           if (Math.random() <= item.chance) {
-            const qty = Math.floor(Math.random() * (item.max - item.min + 1)) + item.min;
-            const rolledObj = { template: item.template, qty };
+            let qty = Math.floor(Math.random() * (item.max - item.min + 1)) + item.min;
+            
+            // Resource quantity scaling based on difficulty (e.g. diff 5 = 1.6x, diff 100 = 15.85x)
+            if (item.type === 'resource') {
+              const diffScale = 1 + (difficulty - 1) * 0.15;
+              qty = Math.round(qty * diffScale);
+            }
+
+            // Roll quality_level based on slider rules
+            let qualityLevel = 0;
+            if (item.type === 'loot') {
+              const roll = Math.random() * 100;
+              if (difficulty >= 80) {
+                if (roll < 10) qualityLevel = 5;
+                else if (roll < 40) qualityLevel = 4;
+                else qualityLevel = 3;
+              } else if (difficulty >= 60) {
+                if (roll < 15) qualityLevel = 4;
+                else if (roll < 50) qualityLevel = 3;
+                else qualityLevel = 2;
+              } else if (difficulty >= 40) {
+                if (roll < 30) qualityLevel = 3;
+                else qualityLevel = 2;
+              } else if (difficulty >= 20) {
+                if (roll < 40) qualityLevel = 2;
+                else qualityLevel = 1;
+              } else {
+                // Difficulty 1-19 (like difficulty 5): ~11.76% chance of Grade 2
+                if (roll < 12) qualityLevel = 2;
+                else qualityLevel = 1;
+              }
+            }
+
+            const rolledObj = { template: item.template, qty, qualityLevel };
             if (item.type === 'loot') {
               rolledLoot.push(rolledObj);
             } else {
@@ -1588,11 +1649,11 @@ async function startBot() {
           for (const item of selectedItems) {
             const finalQty = Math.max(1, Math.round(item.qty * multiplier * penalty));
             await database.pool.query(`
-              INSERT INTO dune.bot_pending_deliveries (account_id, template_id, stack_size, is_applied)
-              VALUES ($1, $2, $3, false)
-            `, [accountId, item.template, finalQty]);
+              INSERT INTO dune.bot_pending_deliveries (account_id, template_id, stack_size, is_applied, quality_level)
+              VALUES ($1, $2, $3, false, $4)
+            `, [accountId, item.template, finalQty, item.qualityLevel]);
           }
-          console.log(`[Airdrop] Rolled and queued rewards for Account ${accountId} - Dungeon: ${config.name} (Loot: ${selectedLoot.length}/3, Resources: ${selectedResources.length}/5, Multiplier: ${multiplier}x)`);
+          console.log(`[Airdrop] Rolled and queued rewards for Account ${accountId} - Dungeon: ${config.name} (Difficulty: ${difficulty}, Loot: ${selectedLoot.length}/3, Resources: ${selectedResources.length}/5, Multiplier: ${multiplier}x)`);
         } else {
           console.log(`[Airdrop] Rolled against loot pool for ${config.name} but did not win any items.`);
         }
@@ -1617,7 +1678,7 @@ async function startBot() {
 
       // Retrieve pending deliveries
       const pending = await database.pool.query(
-        "SELECT id, template_id, stack_size FROM dune.bot_pending_deliveries WHERE account_id = $1 AND is_applied = false",
+        "SELECT id, template_id, stack_size, quality_level FROM dune.bot_pending_deliveries WHERE account_id = $1 AND is_applied = false",
         [accountId]
       );
       if (pending.rows.length === 0) return;
@@ -1628,8 +1689,8 @@ async function startBot() {
         // Insert item safely using slot positioning
         await database.pool.query(`
           INSERT INTO dune.items (inventory_id, template_id, stack_size, position_index, is_new, acquisition_time, stats, quality_level)
-          VALUES ($1, $2, $3, (SELECT COALESCE(MAX(position_index) + 1, 0) FROM dune.items WHERE inventory_id = $1), true, 0, '{}'::jsonb, 0)
-        `, [inventoryId, item.template_id, item.stack_size]);
+          VALUES ($1, $2, $3, (SELECT COALESCE(MAX(position_index) + 1, 0) FROM dune.items WHERE inventory_id = $1), true, 0, '{}'::jsonb, $4)
+        `, [inventoryId, item.template_id, item.stack_size, item.quality_level]);
         
         // Mark delivery as completed
         await database.pool.query(
