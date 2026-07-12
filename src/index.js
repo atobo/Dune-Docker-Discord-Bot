@@ -1367,53 +1367,53 @@ async function startBot() {
         tag: 'Contract.Tracking.Journey.EcolabCompleted', // Updated to match game DB tag
         lootPool: [
           // 100% Drops (Resources)
-          { template: 'AdvancedServos', chance: 1.0, min: 1, max: 3 },
-          { template: 'ChemicalReagent_T1', chance: 1.0, min: 5, max: 15 }, // Spice-infused Plastanium Dust
-          { template: 'ParticleCapacitor', chance: 1.0, min: 1, max: 3 },
+          { template: 'AdvancedServos', chance: 1.0, min: 1, max: 3, type: 'resource' },
+          { template: 'ChemicalReagent_T1', chance: 1.0, min: 5, max: 15, type: 'resource' }, // Spice-infused Plastanium Dust
+          { template: 'ParticleCapacitor', chance: 1.0, min: 1, max: 3, type: 'resource' },
           
           // 55% Drops (Resources)
-          { template: 'AtmosphericFilteredFabric', chance: 0.55, min: 2, max: 6 },
-          { template: 'ImprovedWatertube', chance: 0.55, min: 2, max: 6 },
-          { template: 'IrradiatedCore', chance: 0.55, min: 1, max: 3 },
-          { template: 'OverclockedPowerRegulator', chance: 0.55, min: 1, max: 3 },
-          { template: 'PlasteelCompositeArmorPlating', chance: 0.55, min: 2, max: 5 },
-          { template: 'PlasteelCompositeBladeParts', chance: 0.55, min: 2, max: 5 },
-          { template: 'PlasteelCompositeGunParts', chance: 0.55, min: 2, max: 5 },
-          { template: 'ThermoResponsiveRayAmplifier', chance: 0.55, min: 1, max: 3 },
+          { template: 'AtmosphericFilteredFabric', chance: 0.55, min: 2, max: 6, type: 'resource' },
+          { template: 'ImprovedWatertube', chance: 0.55, min: 2, max: 6, type: 'resource' },
+          { template: 'IrradiatedCore', chance: 0.55, min: 1, max: 3, type: 'resource' },
+          { template: 'OverclockedPowerRegulator', chance: 0.55, min: 1, max: 3, type: 'resource' },
+          { template: 'PlasteelCompositeArmorPlating', chance: 0.55, min: 2, max: 5, type: 'resource' },
+          { template: 'PlasteelCompositeBladeParts', chance: 0.55, min: 2, max: 5, type: 'resource' },
+          { template: 'PlasteelCompositeGunParts', chance: 0.55, min: 2, max: 5, type: 'resource' },
+          { template: 'ThermoResponsiveRayAmplifier', chance: 0.55, min: 1, max: 3, type: 'resource' },
           
           // 30% Drops
-          { template: 'PlasteelPlate', chance: 0.30, min: 5, max: 15 },
+          { template: 'PlasteelPlate', chance: 0.30, min: 5, max: 15, type: 'resource' },
           
           // 3% Drops (Rare tech parts)
-          { template: 'AdvancedMachinery', chance: 0.03, min: 1, max: 2 },
-          { template: 'BallisticWeaveFabric', chance: 0.03, min: 1, max: 2 },
-          { template: 'CarbideBladeParts', chance: 0.03, min: 1, max: 3 },
-          { template: 'DiamondineBladeParts', chance: 0.03, min: 1, max: 3 },
-          { template: 'FluidEfficientIndustrialPump', chance: 0.03, min: 1, max: 2 },
-          { template: 'FlutedHeavyCaliberCompressor', chance: 0.03, min: 1, max: 2 },
-          { template: 'FlutedLightCaliberCompressor', chance: 0.03, min: 1, max: 2 },
-          { template: 'ImprovedHoltzmanActuator', chance: 0.03, min: 1, max: 2 },
-          { template: 'PrecisionRangeFinder', chance: 0.03, min: 1, max: 2 },
-          { template: 'TriForgedHydraulicPiston', chance: 0.03, min: 1, max: 2 },
+          { template: 'AdvancedMachinery', chance: 0.03, min: 1, max: 2, type: 'resource' },
+          { template: 'BallisticWeaveFabric', chance: 0.03, min: 1, max: 2, type: 'resource' },
+          { template: 'CarbideBladeParts', chance: 0.03, min: 1, max: 3, type: 'resource' },
+          { template: 'DiamondineBladeParts', chance: 0.03, min: 1, max: 3, type: 'resource' },
+          { template: 'FluidEfficientIndustrialPump', chance: 0.03, min: 1, max: 2, type: 'resource' },
+          { template: 'FlutedHeavyCaliberCompressor', chance: 0.03, min: 1, max: 2, type: 'resource' },
+          { template: 'FlutedLightCaliberCompressor', chance: 0.03, min: 1, max: 2, type: 'resource' },
+          { template: 'ImprovedHoltzmanActuator', chance: 0.03, min: 1, max: 2, type: 'resource' },
+          { template: 'PrecisionRangeFinder', chance: 0.03, min: 1, max: 2, type: 'resource' },
+          { template: 'TriForgedHydraulicPiston', chance: 0.03, min: 1, max: 2, type: 'resource' },
 
           // Weapons (11% - 13%)
-          { template: 'RegisTripleshotRepeatingRifle', chance: 0.11, min: 1, max: 1 },
-          { template: 'ExperimentalLightningGun', chance: 0.13, min: 1, max: 1 },
-          { template: 'PlasmaCannon', chance: 0.11, min: 1, max: 1 },
-          { template: 'BasharsCommand', chance: 0.11, min: 1, max: 1 },
-          { template: 'IndarasLullaby', chance: 0.11, min: 1, max: 1 },
-          { template: 'SalusanVengeance', chance: 0.11, min: 1, max: 1 },
-          { template: 'TheAncientWay', chance: 0.03, min: 1, max: 1 },
+          { template: 'RegisTripleshotRepeatingRifle', chance: 0.11, min: 1, max: 1, type: 'loot' },
+          { template: 'ExperimentalLightningGun', chance: 0.13, min: 1, max: 1, type: 'loot' },
+          { template: 'PlasmaCannon', chance: 0.11, min: 1, max: 1, type: 'loot' },
+          { template: 'BasharsCommand', chance: 0.11, min: 1, max: 1, type: 'loot' },
+          { template: 'IndarasLullaby', chance: 0.11, min: 1, max: 1, type: 'loot' },
+          { template: 'SalusanVengeance', chance: 0.11, min: 1, max: 1, type: 'loot' },
+          { template: 'TheAncientWay', chance: 0.03, min: 1, max: 1, type: 'loot' },
           
           // Garments/Armor (11% - 13%)
-          { template: 'CircuitGauntlets', chance: 0.13, min: 1, max: 1 },
-          { template: 'PowerHarness', chance: 0.13, min: 1, max: 1 },
-          { template: 'ForgeBoots', chance: 0.11, min: 1, max: 1 },
-          { template: 'ForgeChestpiece', chance: 0.11, min: 1, max: 1 },
-          { template: 'ForgeGloves', chance: 0.11, min: 1, max: 1 },
-          { template: 'ForgeHelmet', chance: 0.11, min: 1, max: 1 },
-          { template: 'ForgePants', chance: 0.11, min: 1, max: 1 },
-          { template: 'IdahosCharge', chance: 0.13, min: 1, max: 1 }
+          { template: 'CircuitGauntlets', chance: 0.13, min: 1, max: 1, type: 'loot' },
+          { template: 'PowerHarness', chance: 0.13, min: 1, max: 1, type: 'loot' },
+          { template: 'ForgeBoots', chance: 0.11, min: 1, max: 1, type: 'loot' },
+          { template: 'ForgeChestpiece', chance: 0.11, min: 1, max: 1, type: 'loot' },
+          { template: 'ForgeGloves', chance: 0.11, min: 1, max: 1, type: 'loot' },
+          { template: 'ForgeHelmet', chance: 0.11, min: 1, max: 1, type: 'loot' },
+          { template: 'ForgePants', chance: 0.11, min: 1, max: 1, type: 'loot' },
+          { template: 'IdahosCharge', chance: 0.13, min: 1, max: 1, type: 'loot' }
         ],
         category: 'testing_stations'
       },
@@ -1423,53 +1423,53 @@ async function startBot() {
         tag: 'Contract.Tracking.Journey.EcolabCompleted', // Updated to match game DB tag
         lootPool: [
           // 100% Drops (Resources)
-          { template: 'AdvancedServos', chance: 1.0, min: 1, max: 3 },
-          { template: 'ChemicalReagent_T1', chance: 1.0, min: 5, max: 15 }, // Spice-infused Plastanium Dust
-          { template: 'ParticleCapacitor', chance: 1.0, min: 1, max: 3 },
+          { template: 'AdvancedServos', chance: 1.0, min: 1, max: 3, type: 'resource' },
+          { template: 'ChemicalReagent_T1', chance: 1.0, min: 5, max: 15, type: 'resource' }, // Spice-infused Plastanium Dust
+          { template: 'ParticleCapacitor', chance: 1.0, min: 1, max: 3, type: 'resource' },
           
           // 55% Drops (Resources)
-          { template: 'AtmosphericFilteredFabric', chance: 0.55, min: 2, max: 6 },
-          { template: 'ImprovedWatertube', chance: 0.55, min: 2, max: 6 },
-          { template: 'IrradiatedCore', chance: 0.55, min: 1, max: 3 },
-          { template: 'OverclockedPowerRegulator', chance: 0.55, min: 1, max: 3 },
-          { template: 'PlasteelCompositeArmorPlating', chance: 0.55, min: 2, max: 5 },
-          { template: 'PlasteelCompositeBladeParts', chance: 0.55, min: 2, max: 5 },
-          { template: 'PlasteelCompositeGunParts', chance: 0.55, min: 2, max: 5 },
-          { template: 'ThermoResponsiveRayAmplifier', chance: 0.55, min: 1, max: 3 },
+          { template: 'AtmosphericFilteredFabric', chance: 0.55, min: 2, max: 6, type: 'resource' },
+          { template: 'ImprovedWatertube', chance: 0.55, min: 2, max: 6, type: 'resource' },
+          { template: 'IrradiatedCore', chance: 0.55, min: 1, max: 3, type: 'resource' },
+          { template: 'OverclockedPowerRegulator', chance: 0.55, min: 1, max: 3, type: 'resource' },
+          { template: 'PlasteelCompositeArmorPlating', chance: 0.55, min: 2, max: 5, type: 'resource' },
+          { template: 'PlasteelCompositeBladeParts', chance: 0.55, min: 2, max: 5, type: 'resource' },
+          { template: 'PlasteelCompositeGunParts', chance: 0.55, min: 2, max: 5, type: 'resource' },
+          { template: 'ThermoResponsiveRayAmplifier', chance: 0.55, min: 1, max: 3, type: 'resource' },
           
           // 30% Drops
-          { template: 'PlasteelPlate', chance: 0.30, min: 5, max: 15 },
+          { template: 'PlasteelPlate', chance: 0.30, min: 5, max: 15, type: 'resource' },
           
           // 3% Drops (Rare tech parts)
-          { template: 'AdvancedMachinery', chance: 0.03, min: 1, max: 2 },
-          { template: 'BallisticWeaveFabric', chance: 0.03, min: 1, max: 2 },
-          { template: 'CarbideBladeParts', chance: 0.03, min: 1, max: 3 },
-          { template: 'DiamondineBladeParts', chance: 0.03, min: 1, max: 3 },
-          { template: 'FluidEfficientIndustrialPump', chance: 0.03, min: 1, max: 2 },
-          { template: 'FlutedHeavyCaliberCompressor', chance: 0.03, min: 1, max: 2 },
-          { template: 'FlutedLightCaliberCompressor', chance: 0.03, min: 1, max: 2 },
-          { template: 'ImprovedHoltzmanActuator', chance: 0.03, min: 1, max: 2 },
-          { template: 'PrecisionRangeFinder', chance: 0.03, min: 1, max: 2 },
-          { template: 'TriForgedHydraulicPiston', chance: 0.03, min: 1, max: 2 },
+          { template: 'AdvancedMachinery', chance: 0.03, min: 1, max: 2, type: 'resource' },
+          { template: 'BallisticWeaveFabric', chance: 0.03, min: 1, max: 2, type: 'resource' },
+          { template: 'CarbideBladeParts', chance: 0.03, min: 1, max: 3, type: 'resource' },
+          { template: 'DiamondineBladeParts', chance: 0.03, min: 1, max: 3, type: 'resource' },
+          { template: 'FluidEfficientIndustrialPump', chance: 0.03, min: 1, max: 2, type: 'resource' },
+          { template: 'FlutedHeavyCaliberCompressor', chance: 0.03, min: 1, max: 2, type: 'resource' },
+          { template: 'FlutedLightCaliberCompressor', chance: 0.03, min: 1, max: 2, type: 'resource' },
+          { template: 'ImprovedHoltzmanActuator', chance: 0.03, min: 1, max: 2, type: 'resource' },
+          { template: 'PrecisionRangeFinder', chance: 0.03, min: 1, max: 2, type: 'resource' },
+          { template: 'TriForgedHydraulicPiston', chance: 0.03, min: 1, max: 2, type: 'resource' },
 
           // Weapons (11% - 13%)
-          { template: 'RegisTripleshotRepeatingRifle', chance: 0.11, min: 1, max: 1 },
-          { template: 'ExperimentalLightningGun', chance: 0.13, min: 1, max: 1 },
-          { template: 'PlasmaCannon', chance: 0.11, min: 1, max: 1 },
-          { template: 'BasharsCommand', chance: 0.11, min: 1, max: 1 },
-          { template: 'IndarasLullaby', chance: 0.11, min: 1, max: 1 },
-          { template: 'SalusanVengeance', chance: 0.11, min: 1, max: 1 },
-          { template: 'TheAncientWay', chance: 0.03, min: 1, max: 1 },
+          { template: 'RegisTripleshotRepeatingRifle', chance: 0.11, min: 1, max: 1, type: 'loot' },
+          { template: 'ExperimentalLightningGun', chance: 0.13, min: 1, max: 1, type: 'loot' },
+          { template: 'PlasmaCannon', chance: 0.11, min: 1, max: 1, type: 'loot' },
+          { template: 'BasharsCommand', chance: 0.11, min: 1, max: 1, type: 'loot' },
+          { template: 'IndarasLullaby', chance: 0.11, min: 1, max: 1, type: 'loot' },
+          { template: 'SalusanVengeance', chance: 0.11, min: 1, max: 1, type: 'loot' },
+          { template: 'TheAncientWay', chance: 0.03, min: 1, max: 1, type: 'loot' },
           
           // Garments/Armor (11% - 13%)
-          { template: 'CircuitGauntlets', chance: 0.13, min: 1, max: 1 },
-          { template: 'PowerHarness', chance: 0.13, min: 1, max: 1 },
-          { template: 'ForgeBoots', chance: 0.11, min: 1, max: 1 },
-          { template: 'ForgeChestpiece', chance: 0.11, min: 1, max: 1 },
-          { template: 'ForgeGloves', chance: 0.11, min: 1, max: 1 },
-          { template: 'ForgeHelmet', chance: 0.11, min: 1, max: 1 },
-          { template: 'ForgePants', chance: 0.11, min: 1, max: 1 },
-          { template: 'IdahosCharge', chance: 0.13, min: 1, max: 1 }
+          { template: 'CircuitGauntlets', chance: 0.13, min: 1, max: 1, type: 'loot' },
+          { template: 'PowerHarness', chance: 0.13, min: 1, max: 1, type: 'loot' },
+          { template: 'ForgeBoots', chance: 0.11, min: 1, max: 1, type: 'loot' },
+          { template: 'ForgeChestpiece', chance: 0.11, min: 1, max: 1, type: 'loot' },
+          { template: 'ForgeGloves', chance: 0.11, min: 1, max: 1, type: 'loot' },
+          { template: 'ForgeHelmet', chance: 0.11, min: 1, max: 1, type: 'loot' },
+          { template: 'ForgePants', chance: 0.11, min: 1, max: 1, type: 'loot' },
+          { template: 'IdahosCharge', chance: 0.13, min: 1, max: 1, type: 'loot' }
         ],
         category: 'testing_stations'
       }
@@ -1483,9 +1483,9 @@ async function startBot() {
         level: 200,
         tag: `Dungeon.${dungeonMap.split('_')[1] || 'Generic'}.Complete`,
         lootPool: [
-          { template: 'Sulfur', chance: 0.7, min: 10, max: 25 },
-          { template: 'CopperOre', chance: 0.6, min: 15, max: 30 },
-          { template: 'BasicAmmo', chance: 0.5, min: 20, max: 40 }
+          { template: 'Sulfur', chance: 0.7, min: 10, max: 25, type: 'resource' },
+          { template: 'CopperOre', chance: 0.6, min: 15, max: 30, type: 'resource' },
+          { template: 'BasicAmmo', chance: 0.5, min: 20, max: 40, type: 'loot' }
         ],
         category: 'testing_stations'
       };
@@ -1552,22 +1552,37 @@ async function startBot() {
 
       if (penalty > 0) {
         // Roll items from lootPool
-        const rolledItems = [];
+        const rolledLoot = [];
+        const rolledResources = [];
+
         for (const item of config.lootPool) {
           if (Math.random() <= item.chance) {
             const qty = Math.floor(Math.random() * (item.max - item.min + 1)) + item.min;
-            rolledItems.push({ template: item.template, qty });
+            const rolledObj = { template: item.template, qty };
+            if (item.type === 'loot') {
+              rolledLoot.push(rolledObj);
+            } else {
+              rolledResources.push(rolledObj);
+            }
           }
         }
 
-        // Shuffle rolled items to ensure randomness
-        for (let i = rolledItems.length - 1; i > 0; i--) {
+        // Shuffle rolled loot to ensure randomness
+        for (let i = rolledLoot.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
-          [rolledItems[i], rolledItems[j]] = [rolledItems[j], rolledItems[i]];
+          [rolledLoot[i], rolledLoot[j]] = [rolledLoot[j], rolledLoot[i]];
         }
 
-        // Limit to max 3 unique items
-        const selectedItems = rolledItems.slice(0, 3);
+        // Shuffle rolled resources
+        for (let i = rolledResources.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [rolledResources[i], rolledResources[j]] = [rolledResources[j], rolledResources[i]];
+        }
+
+        // Select up to 3 loot (gear) items and up to 5 resource items
+        const selectedLoot = rolledLoot.slice(0, 3);
+        const selectedResources = rolledResources.slice(0, 5);
+        const selectedItems = [...selectedLoot, ...selectedResources];
 
         if (selectedItems.length > 0) {
           for (const item of selectedItems) {
@@ -1577,7 +1592,7 @@ async function startBot() {
               VALUES ($1, $2, $3, false)
             `, [accountId, item.template, finalQty]);
           }
-          console.log(`[Airdrop] Rolled and queued ${selectedItems.length} rewards for Account ${accountId} - Dungeon: ${config.name} (Multiplier: ${multiplier}x, Level Penalty: ${penalty}x)`);
+          console.log(`[Airdrop] Rolled and queued rewards for Account ${accountId} - Dungeon: ${config.name} (Loot: ${selectedLoot.length}/3, Resources: ${selectedResources.length}/5, Multiplier: ${multiplier}x)`);
         } else {
           console.log(`[Airdrop] Rolled against loot pool for ${config.name} but did not win any items.`);
         }
