@@ -134,8 +134,16 @@ function loadGameItems() {
       const cat = item.category;
       
       if (cat === 'resources') {
+        const idLower = item.id.toLowerCase();
+        if (idLower.includes('fragment') || idLower.includes('pattern')) {
+          return;
+        }
         gameItems.tiers[tier].resources.push(item);
       } else if (cat === 'schematics') {
+        const idLower = item.id.toLowerCase();
+        if (idLower.includes('dummy') || idLower.includes('placeholder') || idLower.includes('test') || idLower.includes('npe_')) {
+          return;
+        }
         gameItems.tiers[tier].schematics.push(item);
       } else if (['clothing', 'weapons', 'vehicles'].includes(cat)) {
         gameItems.tiers[tier].gear.push(item);
@@ -1693,12 +1701,9 @@ async function startBot() {
 
       let gearQuality = 0;
       if (tier === 6) {
-        // Roll quality grade 1-5 for endgame Tier 6 items
+        // Cap playtime rewards to a maximum quality grade of 2 (preserving high-grade QL3-5 for dungeons)
         const roll = Math.random() * 100;
-        if (roll < 5) gearQuality = 5;
-        else if (roll < 15) gearQuality = 4;
-        else if (roll < 35) gearQuality = 3;
-        else if (roll < 65) gearQuality = 2;
+        if (roll < 35) gearQuality = 2;
         else gearQuality = 1;
       }
 
