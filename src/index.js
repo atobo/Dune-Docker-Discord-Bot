@@ -1365,10 +1365,20 @@ async function startBot() {
         name: 'Testing Station 152 (Ecolab)',
         level: 200,
         tag: 'Contract.Tracking.Journey.EcolabCompleted', // Updated to match game DB tag
-        lootTable: [
-          { template: 'ChemicalReagent_T1', qty: 10 },
-          { template: 'StandardAmmo', qty: 30 },
-          { template: 'IronOre', qty: 25 }
+        lootPool: [
+          // Resources
+          { template: 'ChemicalReagent_T1', chance: 0.8, min: 5, max: 15 },
+          { template: 'StandardAmmo', chance: 0.7, min: 20, max: 50 },
+          { template: 'IronOre', chance: 0.6, min: 15, max: 30 },
+          { template: 'AzuriteOre', chance: 0.5, min: 10, max: 20 },
+          { template: 'BauxiteOre', chance: 0.5, min: 10, max: 25 },
+          { template: 'AluminiumBar', chance: 0.4, min: 5, max: 12 },
+          { template: 'AntiRadiationPill', chance: 0.4, min: 2, max: 5 },
+          { template: 'Bloodsack_02', chance: 0.3, min: 1, max: 3 },
+          { template: 'BodyFluidExtractor_02', chance: 0.3, min: 1, max: 2 },
+          { template: 'Binoculars_1', chance: 0.2, min: 1, max: 1 },
+          // Elite weapons/gear
+          { template: 'AtreSmg5', chance: 0.15, min: 1, max: 1 }
         ],
         category: 'testing_stations'
       },
@@ -1376,10 +1386,20 @@ async function startBot() {
         name: 'Testing Station 152 (Ecolab)',
         level: 200,
         tag: 'Contract.Tracking.Journey.EcolabCompleted', // Updated to match game DB tag
-        lootTable: [
-          { template: 'ChemicalReagent_T1', qty: 10 },
-          { template: 'StandardAmmo', qty: 30 },
-          { template: 'IronOre', qty: 25 }
+        lootPool: [
+          // Resources
+          { template: 'ChemicalReagent_T1', chance: 0.8, min: 5, max: 15 },
+          { template: 'StandardAmmo', chance: 0.7, min: 20, max: 50 },
+          { template: 'IronOre', chance: 0.6, min: 15, max: 30 },
+          { template: 'AzuriteOre', chance: 0.5, min: 10, max: 20 },
+          { template: 'BauxiteOre', chance: 0.5, min: 10, max: 25 },
+          { template: 'AluminiumBar', chance: 0.4, min: 5, max: 12 },
+          { template: 'AntiRadiationPill', chance: 0.4, min: 2, max: 5 },
+          { template: 'Bloodsack_02', chance: 0.3, min: 1, max: 3 },
+          { template: 'BodyFluidExtractor_02', chance: 0.3, min: 1, max: 2 },
+          { template: 'Binoculars_1', chance: 0.2, min: 1, max: 1 },
+          // Elite weapons/gear
+          { template: 'AtreSmg5', chance: 0.15, min: 1, max: 1 }
         ],
         category: 'testing_stations'
       }
@@ -1392,10 +1412,10 @@ async function startBot() {
         name: `Testing Station ${dungeonMap}`,
         level: 200,
         tag: `Dungeon.${dungeonMap.split('_')[1] || 'Generic'}.Complete`,
-        lootTable: [
-          { template: 'Sulfur', qty: 15 },
-          { template: 'CopperOre', qty: 20 },
-          { template: 'BasicAmmo', qty: 25 }
+        lootPool: [
+          { template: 'Sulfur', chance: 0.7, min: 10, max: 25 },
+          { template: 'CopperOre', chance: 0.6, min: 15, max: 30 },
+          { template: 'BasicAmmo', chance: 0.5, min: 20, max: 40 }
         ],
         category: 'testing_stations'
       };
@@ -1424,10 +1444,11 @@ async function startBot() {
       }
 
       // 2. Anti-spam: check if they claimed this dungeon's reward in the last 15 minutes
+      const firstLootTemplate = config.lootPool[0].template;
       const claimRes = await database.pool.query(`
         SELECT 1 FROM dune.bot_pending_deliveries 
         WHERE account_id = $1 AND template_id = $2 AND created_at > NOW() - INTERVAL '15 minutes'
-      `, [accountId, config.lootTable[0].template]);
+      `, [accountId, firstLootTemplate]);
       if (claimRes.rows.length > 0) {
         console.log(`[Airdrop] Account ${accountId} already rewarded for ${config.name} recently. Cooldown active.`);
         return;
@@ -1460,14 +1481,36 @@ async function startBot() {
       }
 
       if (penalty > 0) {
-        for (const item of config.lootTable) {
-          const finalQty = Math.max(1, Math.round(item.qty * multiplier * penalty));
-          await database.pool.query(`
-            INSERT INTO dune.bot_pending_deliveries (account_id, template_id, stack_size, is_applied)
-            VALUES ($1, $2, $3, false)
-          `, [accountId, item.template, finalQty]);
+        // Roll items from lootPool
+        const rolledItems = [];
+        for (const item of config.lootPool) {
+          if (Math.random() <= item.chance) {
+            const qty = Math.floor(Math.random() * (item.max - item.min + 1)) + item.min;
+            rolledItems.push({ template: item.template, qty });
+          }
         }
-        console.log(`[Airdrop] Queued rewards for Account ${accountId} - Dungeon: ${config.name} (Multiplier: ${multiplier}x, Level Penalty: ${penalty}x)`);
+
+        // Shuffle rolled items to ensure randomness
+        for (let i = rolledItems.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [rolledItems[i], rolledItems[j]] = [rolledItems[j], rolledItems[i]];
+        }
+
+        // Limit to max 3 unique items
+        const selectedItems = rolledItems.slice(0, 3);
+
+        if (selectedItems.length > 0) {
+          for (const item of selectedItems) {
+            const finalQty = Math.max(1, Math.round(item.qty * multiplier * penalty));
+            await database.pool.query(`
+              INSERT INTO dune.bot_pending_deliveries (account_id, template_id, stack_size, is_applied)
+              VALUES ($1, $2, $3, false)
+            `, [accountId, item.template, finalQty]);
+          }
+          console.log(`[Airdrop] Rolled and queued ${selectedItems.length} rewards for Account ${accountId} - Dungeon: ${config.name} (Multiplier: ${multiplier}x, Level Penalty: ${penalty}x)`);
+        } else {
+          console.log(`[Airdrop] Rolled against loot pool for ${config.name} but did not win any items.`);
+        }
       } else {
         console.log(`[Airdrop] Player level (${playerLevel}) too high for dungeon level (${config.level}). Level-gap penalty reduced reward to 0.`);
       }
